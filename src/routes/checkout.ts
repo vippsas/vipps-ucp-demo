@@ -176,7 +176,7 @@ const SERVICE_CAPABILITIES = [
 export async function handleCreateCheckoutSession(
   req: Request,
 ): Promise<Response> {
-  // TODO: This whole thing is vibe coded. Needs to be refactored and aligned with the UCP spec completely!
+  // TODO: Needs to be refactored and aligned with the UCP spec
 
   // Parse UCP headers from the request
   const ucpHeaders = parseUCPHeaders(req);
@@ -1683,13 +1683,13 @@ function mapToVippsOrderSummary(session: CheckoutSession): VippsOrderSummary {
  * Default prefill customer data for demo/testing
  */
 const DEFAULT_PREFILL_CUSTOMER: VippsPrefillCustomer = {
-  firstName: "Tobias",
-  lastName: "Alldén",
-  email: "tobias.allden@vipps.no",
-  phoneNumber: "4794886480",
-  streetAddress: "Fururabben 21A",
-  postalCode: "1361",
-  city: "Østerås",
+  firstName: "Ola",
+  lastName: "Nordmann",
+  email: "ola.nordmann@example.com",
+  phoneNumber: "4712345678",
+  streetAddress: "Osloveien 1",
+  postalCode: "0154",
+  city: "Oslo",
   country: "NO",
 };
 

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vippsmobilepay.com/pay/ucp/2026-01-23/schemas/payment_instrument.json",
+  "title": "Vipps MobilePay Payment Instrument",
+  "description": "Payment instrument schema for the com.vippsmobilepay.pay.payment_handler payment handler. Supports WALLET (push notification) and CARD (redirect) payment methods.",
+  "type": "object",
+  "required": [
+    "type"
+  ],
+  "properties": {
+    "type": {
+      "enum": [
+        "WALLET",
+        "CARD"
+      ],
+      "description": "The payment instrument type. WALLET uses push notification flow with customer credentials. CARD uses redirect flow for card payments (no wallet required)."
+    },
+    "credential": {
+      "$ref": "https://vippsmobilepay.com/pay/ucp/2026-01-23/schemas/wallet_payment_credential.json",
+      "description": "The credential information required to process WALLET payments. Required for WALLET type, not used for CARD type."
+    },
+    "return_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "The URL to redirect the user back to after completing the CARD payment. Required for CARD type. Can be a universal link (e.g., myapp://payment-complete) or website URL (e.g., https://example.com/payment-complete)."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": { "const": "WALLET" }
+        }
+      },
+      "then": {
+        "required": ["credential"],
+        "properties": {
+          "credential": {
+            "description": "Required for WALLET payments. Contains the customer identifier (MSISDN or TOKEN)."
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": { "const": "CARD" }
+        }
+      },
+      "then": {
+        "required": ["return_url"],
+        "properties": {
+          "return_url": {
+            "description": "Required for CARD payments. The URL to redirect the user back to after payment completion."
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,152 @@
+{
+  "shipping_options": [
+    {
+      "id": "porterbuddy_express",
+      "title": "Hjemlevering ekspress",
+      "description": "Levering i morgen med valgt tidsluke",
+      "carrier": "PorterBuddy",
+      "delivery_days_min": 1,
+      "delivery_days_max": 1,
+      "time_slots": [
+        { "label": "17:30 - 21:30", "start": "17:30", "end": "21:30" }
+      ],
+      "totals": [
+        { "type": "total", "amount": 7900 }
+      ]
+    },
+    {
+      "id": "postnord_parcel_box_express",
+      "title": "Pakkeboks – Ekspresshåndtering",
+      "description": "Rask levering til nærmeste pakkeboks",
+      "carrier": "PostNord",
+      "delivery_days_min": 1,
+      "delivery_days_max": 2,
+      "totals": [
+        { "type": "total", "amount": 5900 }
+      ]
+    },
+    {
+      "id": "postnord_parcel_box_standard",
+      "title": "Pakkeboks – Standard",
+      "description": "Gratis levering til nærmeste pakkeboks",
+      "carrier": "PostNord",
+      "delivery_days_min": 3,
+      "delivery_days_max": 5,
+      "totals": [
+        { "type": "total", "amount": 0 }
+      ]
+    },
+    {
+      "id": "postnord_pickup_point",
+      "title": "Til butikken i nærheten",
+      "description": "Levering til nærmeste hentested",
+      "carrier": "PostNord",
+      "delivery_days_min": 2,
+      "delivery_days_max": 4,
+      "totals": [
+        { "type": "total", "amount": 5900 }
+      ]
+    },
+    {
+      "id": "postnord_home_delivery",
+      "title": "Hjemlevering",
+      "description": "Levering hjem, leveringsdag avtales",
+      "carrier": "Posten",
+      "delivery_days_min": 2,
+      "delivery_days_max": 5,
+      "totals": [
+        { "type": "total", "amount": 15900 }
+      ]
+    },
+    {
+      "id": "bring_home_carry_in",
+      "title": "Hjemlevering med innbæring",
+      "description": "Levering hjem med innbæring. Sjåfør tar kontakt 30-60 min før ankomst.",
+      "carrier": "Bring",
+      "delivery_days_min": 3,
+      "delivery_days_max": 7,
+      "totals": [
+        { "type": "total", "amount": 89900 }
+      ],
+      "add_on_services": [
+        {
+          "id": "packaging_return",
+          "title": "Retur av emballasje",
+          "description": "Sjåfør tar med emballasjen tilbake",
+          "totals": [
+            { "type": "total", "amount": 15900 }
+          ]
+        },
+        {
+          "id": "old_product_return",
+          "title": "Retur av gammelt produkt",
+          "description": "Sjåfør tar med gammelt produkt for resirkulering",
+          "totals": [
+            { "type": "total", "amount": 42900 }
+          ]
+        }
+      ]
+    }
+  ],
+  "pickup_options": [
+    {
+      "id": "store_pickup",
+      "title": "Hent i butikk",
+      "description": "Klar for henting innen 2 timer",
+      "hours_until_ready": 2,
+      "totals": [
+        { "type": "total", "amount": 0 }
+      ]
+    }
+  ],
+  "store_locations": [
+    {
+      "id": "elkjop_oslo_city",
+      "name": "Elkjøp Oslo City",
+      "address": {
+        "street_address": "Stenersgata 1",
+        "address_locality": "Oslo",
+        "postal_code": "0050",
+        "address_country": "NO"
+      }
+    },
+    {
+      "id": "elkjop_byporten",
+      "name": "Elkjøp Byporten",
+      "address": {
+        "street_address": "Jernbanetorget 6",
+        "address_locality": "Oslo",
+        "postal_code": "0154",
+        "address_country": "NO"
+      }
+    },
+    {
+      "id": "elkjop_storo",
+      "name": "Elkjøp Storo Storsenter",
+      "address": {
+        "street_address": "Vitaminveien 6",
+        "address_locality": "Oslo",
+        "postal_code": "0485",
+        "address_country": "NO"
+      }
+    },
+    {
+      "id": "elkjop_cc_vest",
+      "name": "Elkjøp CC Vest",
+      "address": {
+        "street_address": "Lilleakerveien 16",
+        "address_locality": "Oslo",
+        "postal_code": "0283",
+        "address_country": "NO"
+      }
+    }
+  ],
+  "default_shipping_destination": {
+    "id": "dest_default",
+    "street_address": "Karl Johans gate 1",
+    "address_locality": "Oslo",
+    "address_region": "Oslo",
+    "postal_code": "0154",
+    "address_country": "NO"
+  }
+}

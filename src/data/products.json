@@ -14,8 +14,8 @@
       "name": "USB-C Cable",
       "description": "High-speed USB-C to USB-C cable, 6ft length, supports 100W charging.",
       "price": 400,
-      "currency": "NOK",
-      "stock": 195,
+      "currency": "nok",
+      "stock": 191,
       "image_url": "https://images.clasohlson.com/medias/sys_master/h00/hb3/68622828175390.jpg"
     },
     {

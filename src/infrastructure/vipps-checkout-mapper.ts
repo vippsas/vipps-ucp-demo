@@ -101,7 +101,9 @@ export function mapUCPToVippsCheckoutRequest(
 /**
  * Maps UCP CheckoutSession to Vipps Transaction.
  */
-function mapToVippsTransaction(session: CheckoutSession): VippsTransactionRequest {
+function mapToVippsTransaction(
+  session: CheckoutSession,
+): VippsTransactionRequest {
   const totalEntry = session.totals.find((t) => t.type === "total");
   return {
     amount: {
@@ -149,7 +151,9 @@ function mapToVippsOrderSummary(session: CheckoutSession): VippsOrderSummary {
 /**
  * Maps a UCP LineItemResponse to a Vipps OrderLine.
  */
-function mapLineItemToVippsOrderLine(lineItem: LineItemResponse): VippsOrderLine {
+function mapLineItemToVippsOrderLine(
+  lineItem: LineItemResponse,
+): VippsOrderLine {
   const totalEntry = lineItem.totals.find((t) => t.type === "total");
   const totalAmount = totalEntry?.amount ?? 0;
   const taxAmount = Math.round(totalAmount * (TAX_RATE / (100 + TAX_RATE)));

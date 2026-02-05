@@ -1,4 +1,5 @@
 import { load } from "@std/dotenv";
+import { unknownToError } from "./infrastructure/errors.ts";
 
 // Load .env file BEFORE importing other modules that use env vars
 // Use the directory where main.ts is located to find .env
@@ -58,10 +59,19 @@ const {
   handleCompleteCheckout,
   handleCancelCheckout,
   handleVippsCallback,
+  getSessionById,
 } = await import("./routes/checkout.ts");
 const { UCP_HEADERS } = await import("./infrastructure/ucp_headers.ts");
+const { initSigningKeys } = await import("./infrastructure/signing_keys.ts");
+const {
+  sendOrderWebhook,
+  createShippedOrderEvent,
+} = await import("./infrastructure/webhook_sender.ts");
 
 const { handleGetUCPProfile } = await import("./routes/ucp.ts");
+
+// Initialize signing keys for webhook signatures
+await initSigningKeys();
 
 const PORT = 8080;
 
@@ -96,6 +106,13 @@ function addCorsHeaders(response: Response): Response {
     status: response.status,
     statusText: response.statusText,
     headers: newHeaders,
+  });
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
   });
 }
 
@@ -167,38 +184,156 @@ async function router(req: Request): Promise<Response> {
     return addCorsHeaders(await handleVippsCallback(req));
   }
 
+  // Route: POST /api/shipping/callback - Simulates shipping provider notifying order fulfillment
+  // This mimics what happens when PostNord/Bring/etc calls the merchant with delivery updates
+  if (method === "POST" && path === "/api/shipping/callback") {
+    try {
+      const body = await req.json();
+
+      // Required: order_id and checkout_id to link the fulfillment
+      const orderId = body.order_id;
+      const checkoutId = body.checkout_id;
+
+      if (!orderId || !checkoutId) {
+        return addCorsHeaders(
+          jsonResponse(
+            { error: "Missing required fields: order_id and checkout_id" },
+            400,
+          ),
+        );
+      }
+
+      // Look up the checkout session to get the stored platform webhook URL
+      const session = await getSessionById(checkoutId);
+
+      if (!session) {
+        return addCorsHeaders(
+          jsonResponse(
+            { error: `Checkout session ${checkoutId} not found` },
+            404,
+          ),
+        );
+      }
+
+      // Get the platform webhook URL from the session (discovered from UCP-Agent profile)
+      const platformWebhookUrl = session.platform_webhook_url;
+
+      if (!platformWebhookUrl) {
+        return addCorsHeaders(
+          jsonResponse(
+            {
+              error:
+                `No platform webhook URL stored for checkout ${checkoutId}. ` +
+                `Platform must advertise dev.ucp.shopping.order capability with webhook_url in their profile.`,
+              hint:
+                "Ensure UCP-Agent header profile includes order capability with config.webhook_url",
+            },
+            400,
+          ),
+        );
+      }
+
+      // Shipping provider details
+      const trackingNumber = body.tracking_number ?? `PKG${Date.now()}`;
+      const trackingUrl = body.tracking_url ??
+        `https://tracking.postnord.com/${trackingNumber}`;
+      const carrier = body.carrier ?? "PostNord";
+      const status = body.status ?? "delivered"; // "shipped", "in_transit", "delivered"
+
+      console.log("\n" + "=".repeat(60));
+      console.log("📬 SHIPPING PROVIDER CALLBACK RECEIVED");
+      console.log("=".repeat(60));
+      console.log(`Order ID:        ${orderId}`);
+      console.log(`Checkout ID:     ${checkoutId}`);
+      console.log(`Carrier:         ${carrier}`);
+      console.log(`Status:          ${status}`);
+      console.log(`Tracking #:      ${trackingNumber}`);
+      console.log(
+        `Platform URL:    ${platformWebhookUrl} (from UCP-Agent profile)`,
+      );
+      console.log("=".repeat(60));
+
+      // Create fulfilled order event to send to platform
+      const orderEvent = createShippedOrderEvent(
+        orderId,
+        checkoutId,
+        trackingNumber,
+        trackingUrl,
+        carrier,
+        status,
+      );
+
+      console.log(
+        `\n🔔 Sending order webhook to platform: ${platformWebhookUrl}`,
+      );
+
+      // Fire webhook to platform
+      const response = await sendOrderWebhook(platformWebhookUrl, orderEvent);
+      const responseText = await response.text();
+
+      console.log(`📨 Platform response: ${response.status}`);
+      console.log("=".repeat(60) + "\n");
+
+      return addCorsHeaders(
+        jsonResponse({
+          success: response.ok,
+          message: `Order ${orderId} fulfillment processed`,
+          shipping: {
+            carrier,
+            status,
+            tracking_number: trackingNumber,
+            tracking_url: trackingUrl,
+          },
+          webhook: {
+            url: platformWebhookUrl,
+            source: "UCP-Agent profile (dev.ucp.shopping.order capability)",
+            status: response.status,
+            event_id: orderEvent.event_id,
+          },
+          platform_response: responseText,
+        }),
+      );
+    } catch (error) {
+      const err = unknownToError(error);
+      console.error("❌ Shipping callback error:", err.message);
+      return addCorsHeaders(
+        jsonResponse(
+          {
+            error: {
+              type: "internal_error",
+              code: "shipping_callback_error",
+              message: err.message,
+            },
+          },
+          500,
+        ),
+      );
+    }
+  }
+
   // Route: GET / - Health check
   if (method === "GET" && path === "/") {
     return addCorsHeaders(
-      new Response(
-        JSON.stringify({
-          service: "UCP Business Service",
-          status: "healthy",
-          version: "1.0.0",
-          ucp_version: "2025-01-01",
-        }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        },
-      ),
+      jsonResponse({
+        service: "UCP Business Service",
+        status: "healthy",
+        version: "1.0.0",
+        ucp_version: "2025-01-01",
+      }),
     );
   }
 
   // 404 Not Found
   return addCorsHeaders(
-    new Response(
-      JSON.stringify({
+    jsonResponse(
+      {
         error: {
           type: "not_found",
           code: "route_not_found",
           message: `Route ${method} ${path} not found`,
         },
-      }),
-      {
-        status: 404,
-        headers: { "Content-Type": "application/json" },
       },
+      404,
     ),
   );
 }
@@ -233,6 +368,9 @@ console.log(`✅ Data directory initialized`);
 console.log(`📦 Products endpoint: http://localhost:${PORT}/products`);
 console.log(`🛒 Checkout endpoint: http://localhost:${PORT}/checkout_sessions`);
 console.log(`📲 Vipps callback: http://localhost:${PORT}/api/vipps/callback`);
+console.log(
+  `📬 Shipping callback: POST http://localhost:${PORT}/api/shipping/callback`,
+);
 console.log(`💚 Health check: http://localhost:${PORT}/`);
 
 Deno.serve({ port: PORT }, router);

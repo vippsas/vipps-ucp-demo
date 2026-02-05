@@ -207,6 +207,10 @@ export interface CheckoutSession {
   created_at?: string; // RFC 3339
   updated_at?: string; // RFC 3339
   metadata?: Record<string, string>;
+  /** Platform's webhook URL for order events (from UCP-Agent profile) */
+  platform_webhook_url?: string;
+  /** Platform's profile URL (from UCP-Agent header) */
+  platform_profile_url?: string;
 }
 
 export interface CreateCheckoutSessionRequest {

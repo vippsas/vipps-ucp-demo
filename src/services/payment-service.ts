@@ -19,11 +19,7 @@ import type {
   WalletPaymentInstrument,
 } from "../types.ts";
 import { updateStock } from "../routes/products.ts";
-import {
-  loadSessions,
-  saveSessions,
-  TAX_RATE,
-} from "./checkout-service.ts";
+import { loadSessions, saveSessions, TAX_RATE } from "./checkout-service.ts";
 
 // ============================================
 // Configuration

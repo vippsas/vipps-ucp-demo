@@ -1,17 +1,24 @@
 # UCP Business Service Demo
 
-A demonstration of the [Unified Checkout Protocol (UCP)](https://ucp.dev) specification, integrated with [Vipps MobilePay](https://vippsmobilepay.com/) for payments.
+A demonstration of the [Unified Checkout Protocol (UCP)](https://ucp.dev)
+specification, integrated with [Vipps MobilePay](https://vippsmobilepay.com/)
+for payments.
 
-This project implements a UCP-compliant business service that can be used as a reference for building checkout experiences with wallet payments.
+This project implements a UCP-compliant business service that can be used as a
+reference for building checkout experiences with wallet payments.
 
 ## Overview
 
 This service demonstrates:
 
-- **UCP Checkout Protocol** - Session-based checkout flow with line items, fulfillment options, and totals
-- **UCP Fulfillment Extension** - Shipping and pickup options with dynamic pricing
-- **Vipps MobilePay Integration** - Wallet payments via ePayment API with PUSH_MESSAGE flow
-- **UCP Headers** - Structured fields for agent identification, capabilities, and request context
+- **UCP Checkout Protocol** - Session-based checkout flow with line items,
+  fulfillment options, and totals
+- **UCP Fulfillment Extension** - Shipping and pickup options with dynamic
+  pricing
+- **Vipps MobilePay Integration** - Wallet payments via ePayment API with
+  PUSH_MESSAGE flow
+- **UCP Headers** - Structured fields for agent identification, capabilities,
+  and request context
 
 ## Quick Start
 
@@ -40,18 +47,18 @@ curl http://localhost:8080/
 
 ## API Endpoints
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | Health check |
-| `/.well-known/ucp` | GET | UCP profile discovery |
-| `/products` | GET | List available products |
-| `/products/:sku` | GET | Get product details |
-| `/checkout_sessions` | POST | Create a checkout session |
-| `/checkout_sessions/:id` | GET | Retrieve a session |
-| `/checkout_sessions/:id` | PUT | Update session (fulfillment, addresses) |
-| `/checkout_sessions/:id/complete` | POST | Complete checkout with payment |
-| `/checkout_sessions/:id/cancel` | POST | Cancel a checkout session |
-| `/api/vipps/callback` | POST | Vipps payment webhook |
+| Endpoint                          | Method | Description                             |
+| --------------------------------- | ------ | --------------------------------------- |
+| `/`                               | GET    | Health check                            |
+| `/.well-known/ucp`                | GET    | UCP profile discovery                   |
+| `/products`                       | GET    | List available products                 |
+| `/products/:sku`                  | GET    | Get product details                     |
+| `/checkout_sessions`              | POST   | Create a checkout session               |
+| `/checkout_sessions/:id`          | GET    | Retrieve a session                      |
+| `/checkout_sessions/:id`          | PUT    | Update session (fulfillment, addresses) |
+| `/checkout_sessions/:id/complete` | POST   | Complete checkout with payment          |
+| `/checkout_sessions/:id/cancel`   | POST   | Cancel a checkout session               |
+| `/api/vipps/callback`             | POST   | Vipps payment webhook                   |
 
 ## Usage Examples
 
@@ -113,7 +120,8 @@ VIPPS_EMBEDDED_CHECKOUT=false
 
 ### Getting Vipps Test Credentials
 
-1. Sign up at the [Vipps Developer Portal](https://developer.vippsmobilepay.com/)
+1. Sign up at the
+   [Vipps Developer Portal](https://developer.vippsmobilepay.com/)
 2. Create a test sales unit
 3. Copy credentials to your `.env` file
 
@@ -151,9 +159,12 @@ src/
 
 This service implements:
 
-- [UCP Checkout](https://ucp.dev/specification/checkout-rest/) - Core checkout flow
-- [UCP Fulfillment](https://ucp.dev/specification/fulfillment/) - Shipping and pickup options
-- [Vipps MobilePay Payment Handler](https://vippsmobilepay.com/pay/ucp/2026-01-23/vipps_mp_payment_handler) - Wallet payments
+- [UCP Checkout](https://ucp.dev/specification/checkout-rest/) - Core checkout
+  flow
+- [UCP Fulfillment](https://ucp.dev/specification/fulfillment/) - Shipping and
+  pickup options
+- [Vipps MobilePay Payment Handler](https://vippsmobilepay.com/pay/ucp/2026-01-23/vipps_mp_payment_handler) -
+  Wallet payments
 
 ### UCP Headers
 
@@ -166,7 +177,9 @@ The service uses UCP structured field headers:
 
 ## Testing with Postman
 
-Import the collection from `postman/UCP_Business_Service.postman_collection.json` for a complete set of API requests.
+Import the collection from
+`postman/UCP_Business_Service.postman_collection.json` for a complete set of API
+requests.
 
 ## Development
 

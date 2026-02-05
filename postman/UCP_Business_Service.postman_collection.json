@@ -199,8 +199,8 @@
               },
               {
                 "key": "UCP-Agent",
-                "value": "name=\"Postman Test\"; profile=\"https://postman.com/agent\"",
-                "description": "Optional: UCP Agent identification header"
+                "value": "profile=\"http://localhost:3000/.well-known/ucp\", name=\"Vipps Assistant\"",
+                "description": "UCP Agent header - profile URL must include dev.ucp.shopping.order capability with webhook_url for order webhooks"
               },
               {
                 "key": "UCP-Request-Context",
@@ -217,7 +217,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["checkout_sessions"]
             },
-            "description": "Create a new checkout session with line items.\n\nThis will:\n1. Validate the products exist and have sufficient stock\n2. Calculate totals (subtotal, tax, shipping)\n3. Create a Vipps Checkout session\n4. Return the session with a `continue_url` for the Vipps Checkout flow\n\n**Note:** The session ID is automatically saved to the collection variable `checkoutSessionId` for use in subsequent requests."
+            "description": "Create a new checkout session with line items.\n\nThis will:\n1. Validate the products exist and have sufficient stock\n2. Calculate totals (subtotal, tax, shipping)\n3. Fetch platform profile from UCP-Agent header to discover webhook URLs\n4. Store platform's order webhook URL from `dev.ucp.shopping.order` capability\n5. Create a Vipps Checkout session\n6. Return the session with a `continue_url` for the Vipps Checkout flow\n\n**Note:** The session ID is automatically saved to the collection variable `checkoutSessionId` for use in subsequent requests.\n\n**Important:** The UCP-Agent header must point to a valid profile URL. The business will fetch this profile and look for `dev.ucp.shopping.order` capability with `config.webhook_url` to store for order event callbacks."
           },
           "response": [
             {
@@ -289,6 +289,11 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "UCP-Agent",
+                "value": "profile=\"http://localhost:3000/.well-known/ucp\", name=\"Vipps Assistant\"",
+                "description": "UCP Agent header - required for order webhook discovery"
               }
             ],
             "body": {
@@ -300,7 +305,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["checkout_sessions"]
             },
-            "description": "Create a minimal checkout session with just one line item. Uses default customer prefill data for Vipps Checkout."
+            "description": "Create a minimal checkout session with just one line item. Includes UCP-Agent header for order webhook discovery."
           },
           "response": []
         },
@@ -311,8 +316,8 @@
             "header": [
               {
                 "key": "UCP-Agent",
-                "value": "name=\"Postman Test\"; profile=\"https://postman.com/agent\"",
-                "description": "Optional: UCP Agent identification header"
+                "value": "profile=\"http://localhost:3000/.well-known/ucp\", name=\"Vipps Assistant\"",
+                "description": "UCP Agent header - identifies the platform"
               },
               {
                 "key": "UCP-Request-Context",
@@ -465,8 +470,8 @@
               },
               {
                 "key": "UCP-Agent",
-                "value": "name=\"Postman Test\"; profile=\"https://postman.com/agent\"",
-                "description": "Optional: UCP Agent identification header"
+                "value": "profile=\"http://localhost:3000/.well-known/ucp\", name=\"Vipps Assistant\"",
+                "description": "UCP Agent header - identifies the platform"
               },
               {
                 "key": "UCP-Request-Context",
@@ -677,6 +682,164 @@
       "description": "Checkout session management endpoints following the UCP Shopping Checkout capability."
     },
     {
+      "name": "Webhooks",
+      "item": [
+        {
+          "name": "Simulate Shipping Provider Callback",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_id\": \"order-{{$guid}}\",\n  \"checkout_id\": \"{{checkoutSessionId}}\",\n  \"status\": \"delivered\",\n  \"carrier\": \"PostNord\",\n  \"tracking_number\": \"PKG{{$timestamp}}\",\n  \"tracking_url\": \"https://tracking.postnord.com/PKG{{$timestamp}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/shipping/callback",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "shipping", "callback"]
+            },
+            "description": "Simulates a shipping provider (PostNord, Bring, etc.) notifying the merchant that an order has been fulfilled.\n\n**Flow:**\n1. Shipping provider calls this endpoint with order/fulfillment details\n2. Business looks up the checkout session to find the platform's webhook URL (from UCP-Agent profile)\n3. Business creates a UCP Order event\n4. Business signs the event with its private key\n5. Business sends webhook to the platform's order callback URL discovered from profile\n6. Platform verifies signature and processes the order update\n\n**Required fields:**\n- `order_id`: The order to mark as fulfilled\n- `checkout_id`: Original checkout session ID (must have platform_webhook_url stored)\n\n**Optional fields:**\n- `status`: \"shipped\", \"in_transit\", or \"delivered\" (default: \"delivered\")\n- `carrier`: Shipping carrier name (default: \"PostNord\")\n- `tracking_number`: Package tracking number\n- `tracking_url`: URL to track the shipment\n\n**Note:** The platform webhook URL is discovered from the checkout session's stored `platform_webhook_url`, which was captured from the UCP-Agent header profile when the checkout was created. Ensure the agent sent a profile URL with `dev.ucp.shopping.order` capability declaring `config.webhook_url`."
+          },
+          "response": [
+            {
+              "name": "Order Fulfilled Successfully",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"order_id\": \"order-abc123\",\n  \"checkout_id\": \"cs-xyz789\",\n  \"status\": \"delivered\",\n  \"carrier\": \"PostNord\",\n  \"tracking_number\": \"PKG987654321\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/shipping/callback",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "shipping", "callback"]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"success\": true,\n  \"message\": \"Order order-abc123 fulfillment processed\",\n  \"shipping\": {\n    \"carrier\": \"PostNord\",\n    \"status\": \"delivered\",\n    \"tracking_number\": \"PKG987654321\",\n    \"tracking_url\": \"https://tracking.postnord.com/PKG987654321\"\n  },\n  \"webhook\": {\n    \"url\": \"http://localhost:3000/order/callback\",\n    \"source\": \"UCP-Agent profile (dev.ucp.shopping.order capability)\",\n    \"status\": 202,\n    \"event_id\": \"evt-12345678-abcd-efgh-ijkl-mnopqrstuvwx\"\n  },\n  \"platform_response\": \"{\\\"ucp\\\":{\\\"version\\\":\\\"2026-01-11\\\"}}\"\n}"
+            },
+            {
+              "name": "Checkout Session Not Found",
+              "originalRequest": {
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"order_id\": \"order-abc123\",\n  \"checkout_id\": \"cs-invalid\",\n  \"status\": \"delivered\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/shipping/callback",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "shipping", "callback"]
+                }
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": \"Checkout session cs-invalid not found\"\n}"
+            },
+            {
+              "name": "No Webhook URL Stored",
+              "originalRequest": {
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"order_id\": \"order-abc123\",\n  \"checkout_id\": \"cs-no-profile\",\n  \"status\": \"delivered\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/shipping/callback",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "shipping", "callback"]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": \"No platform webhook URL stored for checkout cs-no-profile. Platform must advertise dev.ucp.shopping.order capability with webhook_url in their profile.\",\n  \"hint\": \"Ensure UCP-Agent header profile includes order capability with config.webhook_url\"\n}"
+            },
+            {
+              "name": "Missing Required Fields",
+              "originalRequest": {
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"delivered\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/shipping/callback",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "shipping", "callback"]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"error\": \"Missing required fields: order_id and checkout_id\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Simulate Shipped Status",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_id\": \"order-{{$guid}}\",\n  \"checkout_id\": \"{{checkoutSessionId}}\",\n  \"status\": \"shipped\",\n  \"carrier\": \"Bring\",\n  \"tracking_number\": \"BRING{{$timestamp}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/shipping/callback",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "shipping", "callback"]
+            },
+            "description": "Simulate a \"shipped\" status update - the package has just left the warehouse."
+          },
+          "response": []
+        },
+        {
+          "name": "Simulate In Transit Status",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_id\": \"order-{{$guid}}\",\n  \"checkout_id\": \"{{checkoutSessionId}}\",\n  \"status\": \"in_transit\",\n  \"carrier\": \"PostNord\",\n  \"tracking_number\": \"PN{{$timestamp}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/shipping/callback",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "shipping", "callback"]
+            },
+            "description": "Simulate an \"in_transit\" status update - the package is on its way to the customer."
+          },
+          "response": []
+        }
+      ],
+      "description": "Webhook endpoints for simulating external callbacks (shipping providers, etc.) that trigger UCP Order events to the platform."
+    },
+    {
       "name": "Complete Flow",
       "item": [
         {
@@ -718,6 +881,11 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "UCP-Agent",
+                "value": "profile=\"http://localhost:3000/.well-known/ucp\", name=\"Vipps Assistant\"",
+                "description": "UCP Agent header - profile must include dev.ucp.shopping.order capability with webhook_url"
               }
             ],
             "body": {
@@ -729,7 +897,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["checkout_sessions"]
             },
-            "description": "Step 2: Create a checkout session\n\nAfter this, open the `continue_url` in a browser to complete payment in Vipps Checkout."
+            "description": "Step 2: Create a checkout session with UCP-Agent header\n\nThe UCP-Agent header includes the platform's profile URL. The business will fetch this profile to discover the order webhook URL.\n\nAfter this, open the `continue_url` in a browser to complete payment in Vipps Checkout."
           },
           "response": []
         },
@@ -737,7 +905,13 @@
           "name": "3. Check Session Status",
           "request": {
             "method": "GET",
-            "header": [],
+            "header": [
+              {
+                "key": "UCP-Agent",
+                "value": "profile=\"http://localhost:3000/.well-known/ucp\", name=\"Vipps Assistant\"",
+                "description": "UCP Agent header - identifies the platform"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/checkout_sessions/{{checkoutSessionId}}",
               "host": ["{{baseUrl}}"],
@@ -755,6 +929,11 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "UCP-Agent",
+                "value": "profile=\"http://localhost:3000/.well-known/ucp\", name=\"Vipps Assistant\"",
+                "description": "UCP Agent header - identifies the platform"
               }
             ],
             "body": {
@@ -774,7 +953,13 @@
           "name": "5. Poll Session Status",
           "request": {
             "method": "GET",
-            "header": [],
+            "header": [
+              {
+                "key": "UCP-Agent",
+                "value": "profile=\"http://localhost:3000/.well-known/ucp\", name=\"Vipps Assistant\"",
+                "description": "UCP Agent header - identifies the platform"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/checkout_sessions/{{checkoutSessionId}}",
               "host": ["{{baseUrl}}"],

@@ -2,10 +2,10 @@ site_name: "vipps-ucp-demo documentation"
 repo_url: https://github.com/vippsas/vipps-ucp-demo/
 edit_uri: edit/main/docs/
 nav:
-  - 'Home': ./ # will be README or INDEX.MD
-  # - 'Document 1': document1.md
-  # - 'Sub menu':
-  #   - 'Document 2': document2.md
+  - "Home": ./ # will be README or INDEX.MD
+# - 'Document 1': document1.md
+# - 'Sub menu':
+#   - 'Document 2': document2.md
 plugins:
   - techdocs-core
 markdown_extensions:

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vippsmobilepay.com/pay/ucp/2026-01-23/schemas/wallet_payment_handler.json",
+  "title": "Vipps MobilePay Payment Handler Configuration",
+  "description": "Configuration schema for the com.vippsmobilepay.pay.payment_handler payment handler.",
+  "type": "object",
+  "required": [
+    "merchant_serial_number"
+  ],
+  "properties": {
+    "environment": {
+      "enum": [
+        "TEST",
+        "PRODUCTION"
+      ],
+      "description": "The Vipps MobilePay environment. Defaults to PRODUCTION if not specified."
+    },
+    "merchant_serial_number": {
+      "type": "string",
+      "description": "The merchant identifier (MSN) in the Vipps MobilePay systems. This is obtained when registering an ecommerce sales unit with Vipps MobilePay. Format varies by Nordic country (typically 5-6 digits).",
+      "pattern": "^[0-9]{5,6}$"
+    },
+    "allowed_payment_instruments": {
+      "type": "array",
+      "items": {
+        "$ref": "https://vippsmobilepay.com/pay/ucp/2026-01-23/schemas/payment_instrument.json"
+      },
+      "description": "The payment instruments allowed for this handler. If not specified, all instrument types are allowed."
+    }
+  }
+}

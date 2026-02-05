@@ -1,0 +1,48 @@
+{
+  "ucp": {
+    "version": "2026-01-11",
+    "services": {
+      "dev.ucp.shopping": {
+        "version": "2026-01-11",
+        "spec": "https://ucp.dev/specs/shopping",
+        "rest": {
+          "schema": "https://ucp.dev/services/shopping/openapi.json",
+          "endpoint": "http://localhost:3000"
+        }
+      }
+    },
+    "capabilities": [
+      {
+        "name": "dev.ucp.shopping.checkout",
+        "version": "2026-01-11",
+        "spec": "https://ucp.dev/specs/shopping/checkout",
+        "schema": "https://ucp.dev/schemas/shopping/checkout.json"
+      },
+      {
+        "name": "dev.ucp.shopping.fulfillment",
+        "version": "2026-01-11",
+        "spec": "https://ucp.dev/specs/shopping/fulfillment",
+        "schema": "https://ucp.dev/schemas/shopping/fulfillment.json",
+        "extends": "dev.ucp.shopping.checkout"
+      }
+    ]
+  },
+  "payment": {
+    "handlers": [
+      {
+        "id": "vippsmobilepay_wallet",
+        "name": "com.vippsmobilepay.pay.payment_handler",
+        "version": "2026-01-23",
+        "spec": "https://vippsmobilepay.com/pay/ucp/2026-01-23/vipps_mp_payment_handler",
+        "config_schema": "https://vippsmobilepay.com/pay/ucp/2026-01-23/config.json",
+        "instrument_schemas": [
+          "https://vippsmobilepay.com/pay/ucp/2026-01-23/wallet_instrument.json"
+        ],
+        "config": {
+          "merchant_serial_number": "168850",
+          "environment": "TEST"
+        }
+      }
+    ]
+  }
+}

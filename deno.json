@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "start": "deno run --allow-net --allow-read --allow-write --allow-env src/main.ts",
+    "dev": "deno run --watch --allow-net --allow-read --allow-write --allow-env src/main.ts"
+  },
+  "imports": {
+    "@std/dotenv": "jsr:@std/dotenv@^0.225.6",
+    "@std/encoding": "jsr:@std/encoding@^1.0.10"
+  }
+}

@@ -1,0 +1,20 @@
+# Visit the docs for a full walktrough of this file
+# https://vippstech.no/docs/default/component/vipps-backstage
+
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: vipps-ucp-demo
+  description: this is vipps-ucp-demo
+  annotations:
+    backstage.io/techdocs-ref: dir:. # create and place all documentation .MD files under /docs
+    backstage.io/kubernetes-label-selector: 'app=vipps-ucp-demo' # the same name as in kubernetes
+    github.com/project-slug: 'vippsas/vipps-ucp-demo' # to enable CI/CD from GitHub
+    # azure.com/tag-selector: app/vipps-ucp-demo # tag key and value to pull your Azure resources in relation to this entity
+    # dev.azure.com/project: project-name # to enable Azure DevOps CI/CD
+    # dev.azure.com/build-definition: "pipeline-name" # to enable Azure DevOps CI/CD
+spec:
+  type: service
+  lifecycle: experimental
+  owner: team-agentic-commerce-owners
+  system: system:default/marketing-platform

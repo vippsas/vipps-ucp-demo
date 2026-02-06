@@ -24,8 +24,10 @@ import type {
   VippsCreatePaymentResponse,
   VippsEPaymentAmount,
   VippsEPaymentError,
+  VippsEPaymentMSISDNCustomer,
   VippsEPaymentOrderLine,
   VippsEPaymentReceipt,
+  VippsEPaymentTokenCustomer,
 } from "../types.ts";
 
 // ============================================
@@ -228,7 +230,7 @@ export interface CreatePaymentOptions {
  */
 export async function createPayment(
   checkoutId: string,
-  msisdn: string,
+  customer: VippsEPaymentTokenCustomer | VippsEPaymentMSISDNCustomer,
   amount: number,
   currency: VippsEPaymentAmount["currency"],
   paymentDescription?: string,
@@ -288,7 +290,7 @@ export async function createPayment(
   // Build request
   const request: VippsCreatePaymentRequest = {
     amount: { currency, value: amount },
-    customer: { phoneNumber: msisdn },
+    customer,
     paymentMethod: { type: "WALLET" },
     reference: checkoutId,
     userFlow: "PUSH_MESSAGE",

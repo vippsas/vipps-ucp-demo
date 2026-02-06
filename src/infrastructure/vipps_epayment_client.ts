@@ -300,9 +300,7 @@ export async function createPayment(
 
   try {
     console.log(
-      `[VippsEPayment] Creating payment for ${checkoutId}, MSISDN: ${
-        msisdn.slice(0, 4)
-      }****`,
+      `[VippsEPayment] Creating payment for ${checkoutId}`,
     );
 
     const response = await fetch(VIPPS_EPAYMENT_URL, {

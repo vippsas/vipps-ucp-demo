@@ -681,7 +681,7 @@ export interface VippsEPaymentReceipt {
 
 export interface VippsCreatePaymentRequest {
   amount: VippsEPaymentAmount;
-  customer: VippsEPaymentCustomer;
+  customer: VippsEPaymentTokenCustomer | VippsEPaymentMSISDNCustomer;
   paymentMethod: VippsEPaymentMethod;
   reference: string;
   userFlow: VippsEPaymentUserFlow;

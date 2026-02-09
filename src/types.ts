@@ -223,17 +223,21 @@ export interface CreateCheckoutSessionRequest {
 }
 
 // Vipps Wallet Payment - https://vippsmobilepay.com/pay/ucp/2026-01-23/vipps_mp_payment_handler
+export interface WalletTokenPaymentCredential {
+  type: "TOKEN";
+  value: string;
+} // This is the one we will most likely send. But we also support the below one
 
-export interface WalletPaymentCredential {
+export interface WalletMSISDNPaymentCredential {
   type: "MSISDN";
-  value: string; // MSISDN format, e.g. "4712345678"
+  value: string; // MSISDN format
 }
 
 export interface WalletPaymentInstrument {
   id?: string;
   handler_id: string;
   type: "WALLET";
-  credential: WalletPaymentCredential;
+  credential: WalletTokenPaymentCredential | WalletMSISDNPaymentCredential;
 }
 
 export interface PaymentData {
@@ -627,8 +631,12 @@ export interface VippsEPaymentAmount {
   value: number; // minor units
 }
 
-export interface VippsEPaymentCustomer {
+export interface VippsEPaymentMSISDNCustomer {
   phoneNumber: string; // MSISDN format
+}
+
+export interface VippsEPaymentTokenCustomer {
+  customerToken: string;
 }
 
 export interface VippsEPaymentMethod {
@@ -673,7 +681,7 @@ export interface VippsEPaymentReceipt {
 
 export interface VippsCreatePaymentRequest {
   amount: VippsEPaymentAmount;
-  customer: VippsEPaymentCustomer;
+  customer: VippsEPaymentTokenCustomer | VippsEPaymentMSISDNCustomer;
   paymentMethod: VippsEPaymentMethod;
   reference: string;
   userFlow: VippsEPaymentUserFlow;

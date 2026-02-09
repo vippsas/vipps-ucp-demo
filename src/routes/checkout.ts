@@ -711,7 +711,7 @@ function validateWalletInstrument(
     };
   }
 
-  // Validate type
+  // For now, this example only supports the wallet payment option. For card examples, please reach out to us.
   if (instrument.type !== "WALLET") {
     return {
       type: "error",
@@ -735,40 +735,56 @@ function validateWalletInstrument(
   }
 
   // Validate credential type
-  if (instrument.credential.type !== "MSISDN") {
+  const credentialType = instrument.credential.type;
+  if (credentialType !== "MSISDN" && credentialType !== "TOKEN") {
     return {
       type: "error",
       code: "invalid_credential_type",
       severity: "recoverable",
       content:
-        `Invalid credential type '${instrument.credential.type}'. Expected 'MSISDN'.`,
+        `Invalid credential type '${credentialType}'. Expected 'MSISDN' or 'TOKEN'.`,
       path: "$.payment.instruments[0].credential.type",
     };
   }
 
-  // Validate MSISDN value
-  const msisdn = instrument.credential.value;
-  if (!msisdn) {
-    return {
-      type: "error",
-      code: "missing_msisdn",
-      severity: "recoverable",
-      content: "Phone number (MSISDN) is required.",
-      path: "$.payment.instruments[0].credential.value",
-    };
-  }
+  // Validate based on credential type
+  if (credentialType === "MSISDN") {
+    // Validate MSISDN value
+    const msisdn = instrument.credential.value;
+    if (!msisdn) {
+      return {
+        type: "error",
+        code: "missing_msisdn",
+        severity: "recoverable",
+        content: "Phone number (MSISDN) is required.",
+        path: "$.payment.instruments[0].credential.value",
+      };
+    }
 
-  // Validate MSISDN format (digits only, 7-15 chars, starts with non-zero)
-  const msisdnPattern = /^[1-9]\d{6,14}$/;
-  if (!msisdnPattern.test(msisdn)) {
-    return {
-      type: "error",
-      code: "invalid_msisdn_format",
-      severity: "recoverable",
-      content:
-        "Invalid phone number format. Expected MSISDN format: digits only with country code (e.g., 4712345678).",
-      path: "$.payment.instruments[0].credential.value",
-    };
+    // Validate MSISDN format (digits only, 7-15 chars, starts with non-zero)
+    const msisdnPattern = /^[1-9]\d{6,14}$/;
+    if (!msisdnPattern.test(msisdn)) {
+      return {
+        type: "error",
+        code: "invalid_msisdn_format",
+        severity: "recoverable",
+        content:
+          "Invalid phone number format. Expected MSISDN format: digits only with country code (e.g., 4712345678).",
+        path: "$.payment.instruments[0].credential.value",
+      };
+    }
+  } else if (credentialType === "TOKEN") {
+    // Validate token value
+    const token = instrument.credential.value;
+    if (!token || typeof token !== "string" || token.trim() === "") {
+      return {
+        type: "error",
+        code: "missing_token",
+        severity: "recoverable",
+        content: "Token value is required.",
+        path: "$.payment.instruments[0].credential.value",
+      };
+    }
   }
 
   return null; // Valid
@@ -1001,8 +1017,9 @@ export async function handleCompleteCheckout(
     });
   }
 
-  // Get MSISDN from instrument
-  const msisdn = instrument.credential.value;
+  const customer = instrument.credential.type === "MSISDN"
+    ? { phoneNumber: instrument.credential.value }
+    : { customerToken: instrument.credential.value };
 
   // Determine currency (normalize to uppercase for Vipps API)
   const currency = session.currency
@@ -1013,7 +1030,7 @@ export async function handleCompleteCheckout(
   const totalEntry = session.totals.find((t) => t.type === "total");
   const paymentResult = await createPayment(
     session.id,
-    msisdn,
+    customer,
     totalEntry?.amount ?? 0,
     currency,
     `Order ${session.id}`,

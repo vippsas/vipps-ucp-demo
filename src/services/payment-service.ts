@@ -16,6 +16,8 @@ import type {
   PaymentState,
   UCPMessage,
   VippsEPaymentAmount,
+  VippsEPaymentMSISDNCustomer,
+  VippsEPaymentTokenCustomer,
   WalletPaymentInstrument,
 } from "../types.ts";
 import { updateStock } from "../routes/products.ts";
@@ -155,7 +157,7 @@ export interface ProcessPaymentResult {
  */
 export async function processPayment(
   session: CheckoutSession,
-  msisdn: string,
+  customer: VippsEPaymentTokenCustomer | VippsEPaymentMSISDNCustomer,
 ): Promise<ProcessPaymentResult> {
   const currency = session.currency
     .toUpperCase() as VippsEPaymentAmount["currency"];
@@ -163,7 +165,7 @@ export async function processPayment(
   const totalEntry = session.totals.find((t) => t.type === "total");
   const paymentResult = await createPayment(
     session.id,
-    msisdn,
+    customer,
     totalEntry?.amount ?? 0,
     currency,
     `Order ${session.id}`,

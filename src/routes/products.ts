@@ -1,4 +1,5 @@
-import type { ErrorResponse, Product, ProductsStore } from "../types.ts";
+import type { ErrorResponse } from "../types/ucp/checkout.ts";
+import type { Product, ProductsStore } from "../types/merchant.ts";
 
 const DATA_FILE = new URL("../data/products.json", import.meta.url);
 

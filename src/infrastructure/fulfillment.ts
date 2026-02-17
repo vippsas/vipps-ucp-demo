@@ -1,3 +1,4 @@
+import type { TotalEntry } from "../types/ucp/checkout.ts";
 import type {
   FulfillmentAvailableMethodResponse,
   FulfillmentMethodResponse,
@@ -5,8 +6,7 @@ import type {
   PostalAddress,
   RetailLocationResponse,
   ShippingDestinationResponse,
-  TotalEntry,
-} from "../types.ts";
+} from "../types/ucp/fulfillment.ts";
 
 const DATA_FILE = new URL("../data/fulfillment-options.json", import.meta.url);
 

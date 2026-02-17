@@ -15,11 +15,13 @@ import type {
   CheckoutSession,
   PaymentState,
   UCPMessage,
+} from "../types/ucp/checkout.ts";
+import type {
   VippsEPaymentAmount,
   VippsEPaymentMSISDNCustomer,
   VippsEPaymentTokenCustomer,
-  WalletPaymentInstrument,
-} from "../types.ts";
+} from "../types/vipps/epayment.ts";
+import type { WalletPaymentInstrument } from "../types/ucp/payment.ts";
 import { updateStock } from "../routes/products.ts";
 import { loadSessions, saveSessions, TAX_RATE } from "./checkout-service.ts";
 

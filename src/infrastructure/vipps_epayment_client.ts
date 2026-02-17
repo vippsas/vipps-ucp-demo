@@ -18,8 +18,12 @@ import type {
   TotalEntry,
   UCPMessage,
   UCPMessageSeverity,
+} from "../types/ucp/checkout.ts";
+import type {
   VippsAccessTokenError,
   VippsAccessTokenResponse,
+} from "../types/vipps/auth.ts";
+import type {
   VippsCreatePaymentRequest,
   VippsCreatePaymentResponse,
   VippsEPaymentAmount,
@@ -28,7 +32,7 @@ import type {
   VippsEPaymentOrderLine,
   VippsEPaymentReceipt,
   VippsEPaymentTokenCustomer,
-} from "../types.ts";
+} from "../types/vipps/epayment.ts";
 
 // ============================================
 // Configuration

@@ -29,6 +29,13 @@
           "spec": "https://ucp.dev/specification/order",
           "schema": "https://ucp.dev/schemas/shopping/order.json"
         }
+      ],
+      "dev.ucp.shopping.ancillaries": [
+        {
+          "version": "2026-01-11",
+          "spec": "https://ucp.dev/specification/ancillaries",
+          "schema": "https://ucp.dev/schemas/shopping/ancillaries.json"
+        }
       ]
     },
     "payment_handlers": {

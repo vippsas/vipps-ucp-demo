@@ -9,15 +9,17 @@
 
 import type {
   CheckoutSession,
-  CreateVippsCheckoutSessionRequest,
   LineItemResponse,
+} from "../types/ucp/checkout.ts";
+import type {
+  CreateVippsCheckoutSessionRequest,
   VippsCheckoutConfiguration,
   VippsMerchantInfo,
   VippsOrderLine,
   VippsOrderSummary,
   VippsPrefillCustomer,
   VippsTransactionRequest,
-} from "../types.ts";
+} from "../types/vipps/checkout.ts";
 
 // ============================================
 // Configuration

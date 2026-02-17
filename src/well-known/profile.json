@@ -30,9 +30,18 @@
           "schema": "https://ucp.dev/schemas/shopping/order.json"
         }
       ],
+      "dev.ucp.shopping.products": [
+        {
+          "version": "2026-02-09",
+          "extends": "dev.ucp.shopping.checkout",
+          "spec": "https://ucp.dev/specification/products",
+          "schema": "https://ucp.dev/schemas/shopping/products.json"
+        }
+      ],
       "dev.ucp.shopping.ancillaries": [
         {
-          "version": "2026-01-11",
+          "version": "2026-02-09",
+          "extends": "dev.ucp.shopping.checkout",
           "spec": "https://ucp.dev/specification/ancillaries",
           "schema": "https://ucp.dev/schemas/shopping/ancillaries.json"
         }

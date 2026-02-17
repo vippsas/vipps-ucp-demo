@@ -4,6 +4,7 @@ import type {
   FulfillmentResponse,
   FulfillmentUpdateRequest,
 } from "./fulfillment.ts";
+import type { AncillariesObject, AncillariesRequest } from "./ancillaries.ts";
 
 export interface TotalEntry {
   type: "subtotal" | "tax" | "shipping" | "discount" | "total";
@@ -156,6 +157,7 @@ export interface CheckoutSession {
   shipping_address?: Address;
   billing_address?: Address;
   fulfillment?: FulfillmentResponse;
+  ancillaries?: AncillariesObject;
   payment?: CheckoutPaymentInfo;
   messages?: UCPMessage[];
   order?: Order;
@@ -176,6 +178,7 @@ export interface CreateCheckoutSessionRequest {
   buyer?: Buyer;
   shipping_address?: Address;
   billing_address?: Address;
+  ancillaries?: AncillariesRequest;
   metadata?: Record<string, string>;
 }
 
@@ -184,4 +187,5 @@ export interface UpdateCheckoutSessionRequest {
   shipping_address?: Address;
   billing_address?: Address;
   fulfillment?: FulfillmentUpdateRequest;
+  ancillaries?: AncillariesRequest;
 }

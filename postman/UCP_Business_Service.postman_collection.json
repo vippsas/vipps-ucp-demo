@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "ucp-business-service-collection",
     "name": "UCP Business Service",
-    "description": "API collection for the UCP Business Service - a demo merchant implementing the Universal Commerce Protocol with Vipps MobilePay payment handler and UCP Fulfillment Extension.\n\n## Getting Started\n\n1. Start the server: `deno task start`\n2. Server runs on `http://localhost:8080`\n\n## Environment Variables\n\nThe collection uses `{{baseUrl}}` which defaults to `http://localhost:8080`.\n\n## UCP Headers (Recommended)\n\nThese headers are pre-configured on checkout requests:\n- **UCP-Agent**: Identifies the calling platform/agent\n- **UCP-Request-Context**: Provides request tracing information\n\n## Payment Handler\n\nThis merchant supports the `com.vippsmobilepay.pay.payment_handler` with handler ID `vippsmobilepay_wallet_handler`. To complete checkout, provide a WALLET instrument with MSISDN credential.\n\n## Fulfillment Options\n\nThe merchant supports UCP Fulfillment Extension with Norwegian delivery options:\n- **PostNord Standard** - kr 199, 3-5 business days\n- **PorterBuddy Express** - kr 129, same day delivery\n- **Hent i butikk** - Free, in-store pickup",
+    "description": "API collection for the UCP Business Service - a demo merchant implementing the Universal Commerce Protocol with Vipps MobilePay payment handler, UCP Fulfillment Extension, and UCP Ancillaries Extension.\n\n## Getting Started\n\n1. Start the server: `deno task start`\n2. Server runs on `http://localhost:8080`\n\n## Environment Variables\n\nThe collection uses `{{baseUrl}}` which defaults to `http://localhost:8080`.\n\n## UCP Headers (Recommended)\n\nThese headers are pre-configured on checkout requests:\n- **UCP-Agent**: Identifies the calling platform/agent\n- **UCP-Request-Context**: Provides request tracing information\n\n## Payment Handler\n\nThis merchant supports the `com.vippsmobilepay.pay.payment_handler` with handler ID `vippsmobilepay_wallet_handler`. To complete checkout, provide a WALLET instrument with MSISDN credential.\n\n## Fulfillment Options\n\nThe merchant supports UCP Fulfillment Extension with Norwegian delivery options:\n- **PostNord Standard** - kr 199, 3-5 business days\n- **PorterBuddy Express** - kr 129, same day delivery\n- **Hent i butikk** - Free, in-store pickup\n\n## Ancillaries\n\nThe merchant supports UCP Ancillaries Extension for related products:\n- **Suggested ancillaries**: Recommended products based on cart items (e.g., USB-C Cable with Mechanical Keyboard)\n- **Required ancillaries**: Automatically added products (e.g., Drip Tray with Washing Machine)\n- Products with relationships: DEMO-004 (Keyboard), DEMO-006 (Washing Machine)",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -310,6 +310,150 @@
           "response": []
         },
         {
+          "name": "Create Checkout (With Ancillaries)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('checkoutSessionId', response.id);",
+                  "    console.log('Saved checkout session ID:', response.id);",
+                  "    if (response.ancillaries) {",
+                  "        console.log('Ancillaries:', JSON.stringify(response.ancillaries, null, 2));",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "UCP-Agent",
+                "value": "profile=\"http://localhost:3000/.well-known/ucp\", name=\"Vipps Assistant\"",
+                "description": "UCP Agent header - required for order webhook discovery"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"line_items\": [\n    {\n      \"sku\": \"DEMO-006\",\n      \"quantity\": 1\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/checkout_sessions",
+              "host": ["{{baseUrl}}"],
+              "path": ["checkout_sessions"]
+            },
+            "description": "Create a checkout session with a product that has ancillary relationships.\n\n**DEMO-006 (Washing Machine)** has:\n- **Required**: DEMO-008 (Drip Tray) - automatically added to line items\n- **Suggested**: DEMO-007 (12mo Insurance) - returned in ancillaries.suggested\n\nThe response will include:\n- The Drip Tray as a separate line item (automatically added)\n- The Insurance in `ancillaries.suggested` array\n- Applied ancillary info in `ancillaries.applied` array"
+          },
+          "response": [
+            {
+              "name": "Session With Required Ancillary",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"line_items\": [\n    {\n      \"sku\": \"DEMO-006\",\n      \"quantity\": 1\n    }\n  ]\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/checkout_sessions",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["checkout_sessions"]
+                }
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"id\": \"cs-ABC123XYZ\",\n  \"status\": \"incomplete\",\n  \"currency\": \"NOK\",\n  \"line_items\": [\n    {\n      \"id\": \"li_1\",\n      \"item\": {\n        \"id\": \"DEMO-006\",\n        \"title\": \"Washing Machine\",\n        \"price\": 1000000\n      },\n      \"quantity\": 1,\n      \"totals\": [{ \"type\": \"subtotal\", \"amount\": 1000000 }, { \"type\": \"total\", \"amount\": 1000000 }]\n    },\n    {\n      \"id\": \"li_abc123\",\n      \"item\": {\n        \"id\": \"DEMO-008\",\n        \"title\": \"Drip Tray\",\n        \"price\": 500,\n        \"description\": \"Mandatory drip tray for the washing machine.\"\n      },\n      \"quantity\": 1,\n      \"totals\": [{ \"type\": \"subtotal\", \"amount\": 500 }, { \"type\": \"tax\", \"amount\": 100 }, { \"type\": \"total\", \"amount\": 500 }]\n    }\n  ],\n  \"ancillaries\": {\n    \"title\": \"Recommended additions\",\n    \"suggested\": [\n      {\n        \"item\": {\n          \"id\": \"DEMO-007\",\n          \"title\": \"Insurance 12MO\",\n          \"price\": 1000,\n          \"description\": \"12-month insurance coverage for your product.\"\n        },\n        \"type\": \"suggested\",\n        \"category\": \"service\",\n        \"for\": \"li_1\",\n        \"description\": \"12-month insurance coverage for your product.\"\n      }\n    ],\n    \"applied\": [\n      {\n        \"id\": \"li_abc123\",\n        \"for\": \"li_1\",\n        \"type\": \"required\",\n        \"category\": \"product\",\n        \"description\": \"Drip Tray (required)\",\n        \"automatic\": true,\n        \"reason_code\": \"legal_requirement\"\n      }\n    ]\n  },\n  \"totals\": [\n    { \"type\": \"subtotal\", \"amount\": 1000500 },\n    { \"type\": \"tax\", \"amount\": 250125 },\n    { \"type\": \"shipping\", \"amount\": 19900 },\n    { \"type\": \"total\", \"amount\": 1270525 }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create Checkout (With Suggested Ancillaries)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('checkoutSessionId', response.id);",
+                  "    console.log('Saved checkout session ID:', response.id);",
+                  "    if (response.ancillaries && response.ancillaries.suggested) {",
+                  "        console.log('Suggested ancillaries:', response.ancillaries.suggested.length);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "UCP-Agent",
+                "value": "profile=\"http://localhost:3000/.well-known/ucp\", name=\"Vipps Assistant\"",
+                "description": "UCP Agent header - required for order webhook discovery"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"line_items\": [\n    {\n      \"sku\": \"DEMO-004\",\n      \"quantity\": 1\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/checkout_sessions",
+              "host": ["{{baseUrl}}"],
+              "path": ["checkout_sessions"]
+            },
+            "description": "Create a checkout session with a product that has suggested ancillaries (no required ones).\n\n**DEMO-004 (Mechanical Keyboard)** has:\n- **Suggested**: DEMO-002 (USB-C Cable)\n- **Suggested**: DEMO-007 (12mo Insurance)\n\nThe response will include these in `ancillaries.suggested` array. They can be added via the Update endpoint."
+          },
+          "response": [
+            {
+              "name": "Session With Suggested Ancillaries",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"line_items\": [\n    {\n      \"sku\": \"DEMO-004\",\n      \"quantity\": 1\n    }\n  ]\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/checkout_sessions",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["checkout_sessions"]
+                }
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"id\": \"cs-XYZ789ABC\",\n  \"status\": \"incomplete\",\n  \"currency\": \"NOK\",\n  \"line_items\": [\n    {\n      \"id\": \"li_1\",\n      \"item\": {\n        \"id\": \"DEMO-004\",\n        \"title\": \"Mechanical Keyboard\",\n        \"price\": 159900\n      },\n      \"quantity\": 1,\n      \"totals\": [{ \"type\": \"subtotal\", \"amount\": 159900 }, { \"type\": \"total\", \"amount\": 159900 }]\n    }\n  ],\n  \"ancillaries\": {\n    \"title\": \"Recommended additions\",\n    \"suggested\": [\n      {\n        \"item\": {\n          \"id\": \"DEMO-002\",\n          \"title\": \"USB-C Cable\",\n          \"price\": 400,\n          \"description\": \"High-speed USB-C to USB-C cable, 6ft length, supports 100W charging.\"\n        },\n        \"type\": \"suggested\",\n        \"category\": \"product\",\n        \"for\": \"li_1\"\n      },\n      {\n        \"item\": {\n          \"id\": \"DEMO-007\",\n          \"title\": \"Insurance 12MO\",\n          \"price\": 1000,\n          \"description\": \"12-month insurance coverage for your product.\"\n        },\n        \"type\": \"suggested\",\n        \"category\": \"service\",\n        \"for\": \"li_1\"\n      }\n    ]\n  },\n  \"totals\": [\n    { \"type\": \"subtotal\", \"amount\": 159900 },\n    { \"type\": \"tax\", \"amount\": 39975 },\n    { \"type\": \"shipping\", \"amount\": 19900 },\n    { \"type\": \"total\", \"amount\": 219775 }\n  ]\n}"
+            }
+          ]
+        },
+        {
           "name": "Get Checkout Session",
           "request": {
             "method": "GET",
@@ -458,6 +602,113 @@
               "body": "{\n  \"error\": {\n    \"type\": \"not_found\",\n    \"code\": \"session_not_found\",\n    \"message\": \"Checkout session 'invalid-id' not found\",\n    \"param\": \"id\"\n  }\n}"
             }
           ]
+        },
+        {
+          "name": "Update Checkout Session (Add Ancillary)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "UCP-Request-Context",
+                "value": "request-id=\"{{$guid}}\"; timestamp=\"{{$isoTimestamp}}\"",
+                "description": "Optional: UCP request context for tracing"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ancillaries\": {\n    \"items\": [\n      {\n        \"item\": {\n          \"id\": \"DEMO-007\"\n        },\n        \"quantity\": 1,\n        \"for\": \"li_1\"\n      }\n    ]\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/checkout_sessions/{{checkoutSessionId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["checkout_sessions", "{{checkoutSessionId}}"]
+            },
+            "description": "Add a suggested ancillary to the checkout session.\n\nThis endpoint allows adding ancillaries that were returned in `ancillaries.suggested`. The ancillary will be:\n1. Added as a new line item\n2. Tracked in `ancillaries.applied`\n3. Reflected in updated totals\n\n**Request fields:**\n- `item.id`: The SKU of the ancillary to add\n- `quantity`: Must match the related line item quantity\n- `for`: The line item ID this ancillary relates to\n\n**Note:** Submitting `ancillaries.items` replaces any previously submitted (non-automatic) ancillaries. Send an empty array to clear all user-selected ancillaries.\n\n**Example:** First create a checkout with DEMO-004 (Mechanical Keyboard) to get suggestions, then use this request to add the suggested USB-C Cable (DEMO-002) or Insurance (DEMO-007)."
+          },
+          "response": [
+            {
+              "name": "Ancillary Added",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"ancillaries\": {\n    \"items\": [\n      {\n        \"item\": {\n          \"id\": \"DEMO-007\"\n        },\n        \"quantity\": 1,\n        \"for\": \"li_1\"\n      }\n    ]\n  }\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/checkout_sessions/cs-XYZ789ABC",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["checkout_sessions", "cs-XYZ789ABC"]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"id\": \"cs-XYZ789ABC\",\n  \"status\": \"ready_for_complete\",\n  \"currency\": \"NOK\",\n  \"line_items\": [\n    {\n      \"id\": \"li_1\",\n      \"item\": {\n        \"id\": \"DEMO-004\",\n        \"title\": \"Mechanical Keyboard\",\n        \"price\": 159900\n      },\n      \"quantity\": 1,\n      \"totals\": [{ \"type\": \"subtotal\", \"amount\": 159900 }, { \"type\": \"total\", \"amount\": 159900 }]\n    },\n    {\n      \"id\": \"li_xyz789\",\n      \"item\": {\n        \"id\": \"DEMO-007\",\n        \"title\": \"Insurance 12MO\",\n        \"price\": 1000,\n        \"description\": \"12-month insurance coverage for your product.\"\n      },\n      \"quantity\": 1,\n      \"totals\": [{ \"type\": \"subtotal\", \"amount\": 1000 }, { \"type\": \"tax\", \"amount\": 200 }, { \"type\": \"total\", \"amount\": 1000 }]\n    }\n  ],\n  \"ancillaries\": {\n    \"title\": \"Recommended additions\",\n    \"suggested\": [\n      {\n        \"item\": {\n          \"id\": \"DEMO-002\",\n          \"title\": \"USB-C Cable\",\n          \"price\": 400\n        },\n        \"type\": \"suggested\",\n        \"category\": \"product\",\n        \"for\": \"li_1\"\n      }\n    ],\n    \"applied\": [\n      {\n        \"id\": \"li_xyz789\",\n        \"for\": \"li_1\",\n        \"type\": \"suggested\",\n        \"category\": \"service\",\n        \"description\": \"Insurance 12MO\"\n      }\n    ]\n  },\n  \"totals\": [\n    { \"type\": \"subtotal\", \"amount\": 160900 },\n    { \"type\": \"tax\", \"amount\": 40225 },\n    { \"type\": \"shipping\", \"amount\": 19900 },\n    { \"type\": \"total\", \"amount\": 221025 }\n  ]\n}"
+            },
+            {
+              "name": "Clear All Ancillaries",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"ancillaries\": {\n    \"items\": []\n  }\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/checkout_sessions/cs-XYZ789ABC",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["checkout_sessions", "cs-XYZ789ABC"]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n  \"id\": \"cs-XYZ789ABC\",\n  \"status\": \"ready_for_complete\",\n  \"line_items\": [\n    {\n      \"id\": \"li_1\",\n      \"item\": { \"id\": \"DEMO-004\", \"title\": \"Mechanical Keyboard\", \"price\": 159900 },\n      \"quantity\": 1\n    }\n  ],\n  \"ancillaries\": {\n    \"title\": \"Recommended additions\",\n    \"suggested\": [\n      { \"item\": { \"id\": \"DEMO-002\", \"title\": \"USB-C Cable\" }, \"type\": \"suggested\" },\n      { \"item\": { \"id\": \"DEMO-007\", \"title\": \"Insurance 12MO\" }, \"type\": \"suggested\" }\n    ]\n  },\n  \"totals\": [\n    { \"type\": \"subtotal\", \"amount\": 159900 },\n    { \"type\": \"tax\", \"amount\": 39975 },\n    { \"type\": \"shipping\", \"amount\": 19900 },\n    { \"type\": \"total\", \"amount\": 219775 }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Update Checkout Session (Multiple Ancillaries)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "UCP-Request-Context",
+                "value": "request-id=\"{{$guid}}\"; timestamp=\"{{$isoTimestamp}}\"",
+                "description": "Optional: UCP request context for tracing"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ancillaries\": {\n    \"items\": [\n      {\n        \"item\": {\n          \"id\": \"DEMO-002\"\n        },\n        \"quantity\": 1,\n        \"for\": \"li_1\"\n      },\n      {\n        \"item\": {\n          \"id\": \"DEMO-007\"\n        },\n        \"quantity\": 1,\n        \"for\": \"li_1\"\n      }\n    ]\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/checkout_sessions/{{checkoutSessionId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["checkout_sessions", "{{checkoutSessionId}}"]
+            },
+            "description": "Add multiple suggested ancillaries to the checkout session at once.\n\nThis example adds both the USB-C Cable and Insurance to a Mechanical Keyboard checkout.\n\n**Note:** Each submission replaces the previous ancillary selection. To add to existing ancillaries, include them all in the request."
+          },
+          "response": []
         },
         {
           "name": "Complete Checkout Session",

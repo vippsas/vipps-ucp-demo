@@ -15,6 +15,8 @@ This service demonstrates:
   fulfillment options, and totals
 - **UCP Fulfillment Extension** - Shipping and pickup options with dynamic
   pricing
+- **UCP Ancillaries Extension** - Related products, upsells, and required
+  add-ons
 - **Vipps MobilePay Integration** - Wallet payments via ePayment API with
   PUSH_MESSAGE flow
 - **UCP Headers** - Structured fields for agent identification, capabilities,
@@ -94,6 +96,43 @@ curl -X POST http://localhost:8080/checkout_sessions/{session_id}/complete \
   }'
 ```
 
+### Create Checkout with Ancillaries
+
+Products can have relationships that generate ancillary suggestions. For
+example, DEMO-006 (Washing Machine) has a required Drip Tray and suggested
+Insurance:
+
+```bash
+curl -X POST http://localhost:8080/checkout_sessions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "line_items": [
+      { "sku": "DEMO-006", "quantity": 1 }
+    ]
+  }'
+```
+
+The response includes:
+
+- **Required ancillaries** - Automatically added to line items (e.g., Drip Tray)
+- **Suggested ancillaries** - Returned in `ancillaries.suggested` array
+
+### Add a Suggested Ancillary
+
+```bash
+curl -X PUT http://localhost:8080/checkout_sessions/{session_id} \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ancillaries": {
+      "items": [{
+        "item": { "id": "DEMO-007" },
+        "quantity": 1,
+        "for": "li_1"
+      }]
+    }
+  }'
+```
+
 ## Configuration
 
 ### Environment Variables
@@ -130,16 +169,28 @@ VIPPS_EMBEDDED_CHECKOUT=false
 ```
 src/
 ├── main.ts                          # Entry point & HTTP router
-├── types.ts                         # TypeScript type definitions
+├── types/
+│   ├── merchant.ts                  # Demo merchant types (Product, etc.)
+│   ├── ucp/
+│   │   ├── checkout.ts              # UCP Checkout types
+│   │   ├── fulfillment.ts           # UCP Fulfillment Extension types
+│   │   ├── payment.ts               # UCP Payment Handler types
+│   │   └── ancillaries.ts           # UCP Ancillaries Extension types
+│   └── vipps/
+│       ├── checkout.ts              # Vipps Checkout API v3 types
+│       ├── epayment.ts              # Vipps ePayment API types
+│       └── auth.ts                  # Vipps Access Token API types
 ├── routes/
 │   ├── checkout.ts                  # Checkout session handlers
 │   ├── products.ts                  # Product catalog handlers
 │   └── ucp.ts                       # UCP profile endpoint
 ├── services/
 │   ├── checkout-service.ts          # Session management & business logic
-│   └── payment-service.ts           # Payment processing & callbacks
+│   ├── payment-service.ts           # Payment processing & callbacks
+│   └── ancillaries-service.ts       # Ancillary suggestions & processing
 ├── infrastructure/
 │   ├── fulfillment.ts               # Fulfillment options builder
+│   ├── ucp_profile.ts               # UCP profile utilities
 │   ├── vipps_epayment_client.ts     # Vipps ePayment API client
 │   ├── vipps-checkout-mapper.ts     # UCP to Vipps mapping
 │   ├── ucp_headers.ts               # UCP header parsing/serialization
@@ -155,6 +206,32 @@ src/
     └── *.json                       # JSON schemas
 ```
 
+### Type Organization
+
+Types are organized into domain-specific modules:
+
+| Module                     | Description                                        |
+| -------------------------- | -------------------------------------------------- |
+| `types/ucp/checkout.ts`    | Core checkout types (Session, LineItem, Totals)    |
+| `types/ucp/fulfillment.ts` | Fulfillment extension types (Shipping, Pickup)     |
+| `types/ucp/payment.ts`     | Payment handler types (Wallet, Credentials)        |
+| `types/ucp/ancillaries.ts` | Ancillaries extension types (Suggestions, Applied) |
+| `types/vipps/checkout.ts`  | Vipps Checkout API v3 types                        |
+| `types/vipps/epayment.ts`  | Vipps ePayment API types                           |
+| `types/vipps/auth.ts`      | Vipps Access Token API types                       |
+| `types/merchant.ts`        | Demo merchant types (Product, ProductsStore)       |
+
+Import types from their specific modules:
+
+```typescript
+import type {
+  CheckoutSession,
+  LineItemResponse,
+} from "./types/ucp/checkout.ts";
+import type { AncillarySuggestion } from "./types/ucp/ancillaries.ts";
+import type { Product } from "./types/merchant.ts";
+```
+
 ## UCP Specification
 
 This service implements:
@@ -163,6 +240,8 @@ This service implements:
   flow
 - [UCP Fulfillment](https://ucp.dev/specification/fulfillment/) - Shipping and
   pickup options
+- [UCP Ancillaries](https://ucp.dev/specification/ancillaries/) - Related
+  products and upsells
 - [Vipps MobilePay Payment Handler](https://vippsmobilepay.com/pay/ucp/2026-01-23/vipps_mp_payment_handler) -
   Wallet payments
 
@@ -212,7 +291,7 @@ deno lint
 The service implements the Vipps PUSH_MESSAGE payment flow:
 
 1. **Create Session** - Platform creates checkout session
-2. **Update Session** - User selects fulfillment options
+2. **Update Session** - User selects fulfillment options or ancillaries
 3. **Complete Checkout** - Platform submits payment with MSISDN
 4. **Push Notification** - Vipps sends push to user's phone
 5. **User Approves** - User opens Vipps app and approves payment

@@ -10,7 +10,6 @@ import type {
   CheckoutSessionStatus,
   LineItemResponse,
   TotalEntry,
-  UCPResponseMetadata,
 } from "../types/ucp/checkout.ts";
 import type { SessionsStore } from "../types/merchant.ts";
 
@@ -20,35 +19,6 @@ import type { SessionsStore } from "../types/merchant.ts";
 
 const DATA_FILE = new URL("../data/sessions.json", import.meta.url).pathname;
 const SESSION_EXPIRY_HOURS = 24;
-
-/** UCP API version supported by this service */
-export const UCP_VERSION = "2026-01-11";
-
-/** UCP capabilities advertised by this business service */
-export const UCP_CAPABILITIES: UCPResponseMetadata = {
-  version: UCP_VERSION,
-  capabilities: [
-    {
-      name: "dev.ucp.shopping.checkout",
-      version: UCP_VERSION,
-    },
-    {
-      name: "dev.ucp.shopping.fulfillment",
-      version: UCP_VERSION,
-      extends: "dev.ucp.shopping.checkout",
-    },
-  ],
-};
-
-/** Service capabilities for response headers */
-export const SERVICE_CAPABILITIES: Array<
-  { name: string; version?: string }
-> = [
-  { name: "checkout", version: UCP_VERSION },
-  { name: "payment" },
-  { name: "shipping" },
-  { name: "products" },
-];
 
 // ============================================
 // Session Persistence

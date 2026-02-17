@@ -11,6 +11,14 @@ import {
 } from "../infrastructure/ucp_headers.ts";
 import { discoverPlatformWebhookUrl } from "../infrastructure/platform_profile.ts";
 import {
+  getUCPResponseMetadata,
+  getUCPVersion,
+} from "../infrastructure/ucp_profile.ts";
+import {
+  initializeAncillaries,
+  updateAncillaries,
+} from "../services/ancillaries-service.ts";
+import {
   clearAccessToken,
   createPayment,
   getPaymentStatus,
@@ -25,7 +33,6 @@ import type {
   Link,
   TotalEntry,
   UCPMessage,
-  UCPResponseMetadata,
   UpdateCheckoutSessionRequest,
 } from "../types/ucp/checkout.ts";
 import type {
@@ -49,7 +56,6 @@ import { getProductBySku, updateStock } from "./products.ts";
 
 const DATA_FILE = new URL("../data/sessions.json", import.meta.url).pathname;
 const SESSION_EXPIRY_HOURS = 24;
-const UCP_VERSION = "2026-01-11";
 
 // Default links for checkout responses (required per UCP spec)
 const DEFAULT_LINKS: Link[] = [
@@ -62,22 +68,6 @@ const DEFAULT_LINKS: Link[] = [
     url: "https://example.com/privacy",
   },
 ];
-
-// UCP capabilities for this business
-const UCP_CAPABILITIES: UCPResponseMetadata = {
-  version: UCP_VERSION,
-  capabilities: [
-    {
-      name: "dev.ucp.shopping.checkout",
-      version: UCP_VERSION,
-    },
-    {
-      name: "dev.ucp.shopping.fulfillment",
-      version: UCP_VERSION,
-      extends: "dev.ucp.shopping.checkout",
-    },
-  ],
-};
 
 // Payment timeout for async PUSH_MESSAGE flow (5 minutes)
 const PAYMENT_TIMEOUT_MS = 5 * 60 * 1000;
@@ -169,14 +159,6 @@ export async function getSessionById(
   return sessions.find((s) => s.id === sessionId);
 }
 
-/** Service capabilities advertised in responses */
-const SERVICE_CAPABILITIES = [
-  { name: "checkout", version: UCP_VERSION },
-  { name: "payment" },
-  { name: "shipping" },
-  { name: "products" },
-];
-
 export async function handleCreateCheckoutSession(
   req: Request,
 ): Promise<Response> {
@@ -243,7 +225,7 @@ export async function handleCreateCheckoutSession(
   }
 
   // Build line items with product details (UCP spec format)
-  const lineItems: LineItemResponse[] = [];
+  let lineItems: LineItemResponse[] = [];
   let currency = body.currency ?? "NOK"; // Default to NOK for Vipps
 
   for (let idx = 0; idx < body.line_items.length; idx++) {
@@ -305,6 +287,12 @@ export async function handleCreateCheckoutSession(
     });
   }
 
+  // Initialize ancillaries (applies required ancillaries automatically)
+  const { updatedLineItems, ancillaries } = await initializeAncillaries(
+    lineItems,
+  );
+  lineItems = updatedLineItems;
+
   // Build fulfillment options
   const lineItemIds = lineItems.map((li) => li.id);
   const fulfillmentMethods = await buildFulfillmentMethods(lineItemIds);
@@ -336,7 +324,7 @@ export async function handleCreateCheckoutSession(
 
   // Create the UCP session object (spec-compliant format)
   const session: CheckoutSession = {
-    ucp: UCP_CAPABILITIES,
+    ucp: getUCPResponseMetadata(),
     id: generateSessionId(),
     status: "incomplete",
     currency,
@@ -350,6 +338,7 @@ export async function handleCreateCheckoutSession(
       methods: fulfillmentMethods,
       available_methods: availableMethods,
     },
+    ancillaries: Object.keys(ancillaries).length > 0 ? ancillaries : undefined,
     created_at: now.toISOString(),
     updated_at: now.toISOString(),
     expires_at: expiresAt.toISOString(),
@@ -384,7 +373,7 @@ export async function handleCreateCheckoutSession(
       });
     }
     continueUrl =
-      `${vippsCheckoutResult.data.checkoutFrontendUrl}?token=${vippsCheckoutResult.data.token}&ec_version=${UCP_VERSION}`;
+      `${vippsCheckoutResult.data.checkoutFrontendUrl}?token=${vippsCheckoutResult.data.token}&ec_version=${getUCPVersion()}`;
   }
 
   // Save session
@@ -401,11 +390,11 @@ export async function handleCreateCheckoutSession(
   // Add UCP-Capabilities header
   responseHeaders.set(
     UCP_HEADERS.CAPABILITIES,
-    serializeUCPCapabilities(SERVICE_CAPABILITIES),
+    serializeUCPCapabilities(getUCPResponseMetadata().capabilities),
   );
 
   // Add UCP-API-Version header
-  responseHeaders.set(UCP_HEADERS.API_VERSION, UCP_VERSION);
+  responseHeaders.set(UCP_HEADERS.API_VERSION, getUCPVersion());
 
   // Echo back request context with response timestamp
   if (ucpHeaders.requestContext) {
@@ -493,9 +482,9 @@ export async function handleGetCheckoutSession(
   const responseHeaders = new Headers({ "Content-Type": "application/json" });
   responseHeaders.set(
     UCP_HEADERS.CAPABILITIES,
-    serializeUCPCapabilities(SERVICE_CAPABILITIES),
+    serializeUCPCapabilities(getUCPResponseMetadata().capabilities),
   );
-  responseHeaders.set(UCP_HEADERS.API_VERSION, UCP_VERSION);
+  responseHeaders.set(UCP_HEADERS.API_VERSION, getUCPVersion());
 
   if (ucpHeaders.requestContext) {
     responseHeaders.set(
@@ -620,6 +609,31 @@ export async function handleUpdateCheckoutSession(
     }
   }
 
+  // Handle ancillary updates
+  if (body.ancillaries !== undefined) {
+    const ancillaryResult = await updateAncillaries(
+      session,
+      body.ancillaries.items,
+    );
+
+    // Update line items (adds ancillary line items)
+    session.line_items = ancillaryResult.updatedLineItems;
+
+    // Update ancillaries object
+    session.ancillaries = Object.keys(ancillaryResult.ancillaries).length > 0
+      ? ancillaryResult.ancillaries
+      : undefined;
+
+    // Log any errors (but don't fail the request)
+    if (ancillaryResult.errors.length > 0) {
+      console.log(
+        `[UpdateCheckout] Ancillary processing warnings: ${
+          ancillaryResult.errors.join(", ")
+        }`,
+      );
+    }
+  }
+
   // Recalculate totals with new fulfillment selection
   const subtotal = session.line_items.reduce((sum, li) => {
     const subtotalEntry = li.totals.find((t) => t.type === "subtotal");
@@ -659,9 +673,9 @@ export async function handleUpdateCheckoutSession(
   const responseHeaders = new Headers({ "Content-Type": "application/json" });
   responseHeaders.set(
     UCP_HEADERS.CAPABILITIES,
-    serializeUCPCapabilities(SERVICE_CAPABILITIES),
+    serializeUCPCapabilities(getUCPResponseMetadata().capabilities),
   );
-  responseHeaders.set(UCP_HEADERS.API_VERSION, UCP_VERSION);
+  responseHeaders.set(UCP_HEADERS.API_VERSION, getUCPVersion());
 
   if (ucpHeaders.requestContext) {
     responseHeaders.set(
@@ -850,9 +864,9 @@ export async function handleCancelCheckout(
     const responseHeaders = new Headers({ "Content-Type": "application/json" });
     responseHeaders.set(
       UCP_HEADERS.CAPABILITIES,
-      serializeUCPCapabilities(SERVICE_CAPABILITIES),
+      serializeUCPCapabilities(getUCPResponseMetadata().capabilities),
     );
-    responseHeaders.set(UCP_HEADERS.API_VERSION, UCP_VERSION);
+    responseHeaders.set(UCP_HEADERS.API_VERSION, getUCPVersion());
 
     return new Response(JSON.stringify(session), {
       status: 200,
@@ -877,9 +891,9 @@ export async function handleCancelCheckout(
   const responseHeaders = new Headers({ "Content-Type": "application/json" });
   responseHeaders.set(
     UCP_HEADERS.CAPABILITIES,
-    serializeUCPCapabilities(SERVICE_CAPABILITIES),
+    serializeUCPCapabilities(getUCPResponseMetadata().capabilities),
   );
-  responseHeaders.set(UCP_HEADERS.API_VERSION, UCP_VERSION);
+  responseHeaders.set(UCP_HEADERS.API_VERSION, getUCPVersion());
 
   if (ucpHeaders.requestContext) {
     responseHeaders.set(
@@ -1142,9 +1156,9 @@ export async function handleCompleteCheckout(
   const responseHeaders = new Headers({ "Content-Type": "application/json" });
   responseHeaders.set(
     UCP_HEADERS.CAPABILITIES,
-    serializeUCPCapabilities(SERVICE_CAPABILITIES),
+    serializeUCPCapabilities(getUCPResponseMetadata().capabilities),
   );
-  responseHeaders.set(UCP_HEADERS.API_VERSION, UCP_VERSION);
+  responseHeaders.set(UCP_HEADERS.API_VERSION, getUCPVersion());
 
   if (ucpHeaders.requestContext) {
     responseHeaders.set(

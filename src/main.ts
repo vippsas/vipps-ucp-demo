@@ -2,8 +2,8 @@ import { load } from "@std/dotenv";
 import { unknownToError } from "./infrastructure/errors.ts";
 
 // Load .env file BEFORE importing other modules that use env vars
-// Use the directory where main.ts is located to find .env
-const envFile = new URL("./.env", import.meta.url);
+// Look for .env in the project root (parent of src/)
+const envFile = new URL("../.env", import.meta.url);
 try {
   // Try to read the file first to verify it exists and get proper path handling
   await Deno.readTextFile(envFile);
@@ -69,6 +69,10 @@ const {
 } = await import("./infrastructure/webhook_sender.ts");
 
 const { handleGetUCPProfile } = await import("./routes/ucp.ts");
+const { initUCPProfile } = await import("./infrastructure/ucp_profile.ts");
+
+// Initialize UCP profile (loads capabilities from well-known/profile.json)
+await initUCPProfile();
 
 // Initialize signing keys for webhook signatures
 await initSigningKeys();

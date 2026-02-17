@@ -1,27 +1,25 @@
-import type { ErrorResponse } from "../types/ucp/checkout.ts";
 import type { Product, ProductsStore } from "../types/merchant.ts";
 
 const DATA_FILE = new URL("../data/products.json", import.meta.url);
 
-async function loadProducts(): Promise<Product[]> {
+async function loadProducts(): Promise<ProductsStore> {
   try {
     const data = await Deno.readTextFile(DATA_FILE);
     const store: ProductsStore = JSON.parse(data);
     console.log(
       `[PRODUCTS] Loaded ${store.products.length} products from ${DATA_FILE.pathname}`,
     );
-    return store.products;
+    return store;
   } catch (error) {
     console.error(
       `[PRODUCTS] Failed to load products from ${DATA_FILE.pathname}:`,
       error,
     );
-    return [];
+    return { products: [] };
   }
 }
 
-async function saveProducts(products: Product[]): Promise<void> {
-  const store: ProductsStore = { products };
+async function saveProducts(store: ProductsStore): Promise<void> {
   await Deno.writeTextFile(DATA_FILE, JSON.stringify(store, null, 2));
 }
 
@@ -39,23 +37,13 @@ export async function handleGetProduct(
   sku: string,
 ): Promise<Response> {
   const products = await loadProducts();
-  const product = products.find((p) => p.sku === sku);
-
+  const product = products.products.find((p) => p.sku === sku);
   if (!product) {
-    const error: ErrorResponse = {
-      error: {
-        type: "not_found",
-        code: "product_not_found",
-        message: `Product with SKU '${sku}' not found`,
-        param: "sku",
-      },
-    };
-    return new Response(JSON.stringify(error), {
+    return new Response(JSON.stringify({ error: "Product not found" }), {
       status: 404,
       headers: { "Content-Type": "application/json" },
     });
   }
-
   return new Response(JSON.stringify(product), {
     status: 200,
     headers: { "Content-Type": "application/json" },
@@ -68,18 +56,18 @@ export async function updateStock(
   quantityChange: number,
 ): Promise<boolean> {
   const products = await loadProducts();
-  const productIndex = products.findIndex((p) => p.sku === sku);
+  const productIndex = products.products.findIndex((p) => p.sku === sku);
 
   if (productIndex === -1) {
     return false;
   }
 
-  const newStock = products[productIndex].stock + quantityChange;
+  const newStock = products.products[productIndex].stock + quantityChange;
   if (newStock < 0) {
     return false;
   }
 
-  products[productIndex].stock = newStock;
+  products.products[productIndex].stock = newStock;
   await saveProducts(products);
   return true;
 }
@@ -87,5 +75,5 @@ export async function updateStock(
 // Helper to get product by SKU
 export async function getProductBySku(sku: string): Promise<Product | null> {
   const products = await loadProducts();
-  return products.find((p) => p.sku === sku) ?? null;
+  return products.products.find((p) => p.sku === sku) ?? null;
 }

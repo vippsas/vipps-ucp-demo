@@ -2,6 +2,8 @@
 
 import type { CheckoutSession } from "./ucp/checkout.ts";
 
+export type ProductType = "product" | "service";
+
 // Product catalog types
 export interface Product {
   sku: string;
@@ -9,8 +11,15 @@ export interface Product {
   description: string;
   price: number; // minor units (cents/øre)
   currency: string;
-  stock: number;
   image_url?: string;
+  type: ProductType;
+  stock: number;
+  relationships?: ProductRelationship[];
+}
+
+export interface ProductRelationship {
+  type: "suggested" | "required";
+  sku: string;
 }
 
 // Data store types

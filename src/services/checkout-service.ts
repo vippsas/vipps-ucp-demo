@@ -9,10 +9,10 @@ import type {
   CheckoutSession,
   CheckoutSessionStatus,
   LineItemResponse,
-  SessionsStore,
   TotalEntry,
   UCPResponseMetadata,
-} from "../types.ts";
+} from "../types/ucp/checkout.ts";
+import type { SessionsStore } from "../types/merchant.ts";
 
 // ============================================
 // Configuration

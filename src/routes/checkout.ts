@@ -18,29 +18,33 @@ import {
 } from "../infrastructure/vipps_epayment_client.ts";
 import type {
   CheckoutSession,
-  CompleteCheckoutRequest,
   CreateCheckoutSessionRequest,
-  CreateVippsCheckoutSessionRequest,
-  CreateVippsCheckoutSessionResponse,
   ErrorResponse,
   Item,
   LineItemResponse,
   Link,
-  SessionsStore,
   TotalEntry,
   UCPMessage,
   UCPResponseMetadata,
   UpdateCheckoutSessionRequest,
+} from "../types/ucp/checkout.ts";
+import type {
+  CompleteCheckoutRequest,
+  WalletPaymentInstrument,
+} from "../types/ucp/payment.ts";
+import type { SessionsStore } from "../types/merchant.ts";
+import type {
+  CreateVippsCheckoutSessionRequest,
+  CreateVippsCheckoutSessionResponse,
   VippsCheckoutConfiguration,
   VippsCheckoutError,
-  VippsEPaymentAmount,
   VippsMerchantInfo,
   VippsOrderLine,
   VippsOrderSummary,
   VippsPrefillCustomer,
   VippsTransactionRequest,
-  WalletPaymentInstrument,
-} from "../types.ts";
+} from "../types/vipps/checkout.ts";
+import type { VippsEPaymentAmount } from "../types/vipps/epayment.ts";
 import { getProductBySku, updateStock } from "./products.ts";
 
 const DATA_FILE = new URL("../data/sessions.json", import.meta.url).pathname;

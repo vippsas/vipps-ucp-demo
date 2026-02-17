@@ -631,14 +631,6 @@ export interface VippsEPaymentAmount {
   value: number; // minor units
 }
 
-export interface VippsEPaymentMSISDNCustomer {
-  phoneNumber: string; // MSISDN format
-}
-
-export interface VippsEPaymentTokenCustomer {
-  customerToken: string;
-}
-
 export interface VippsEPaymentMethod {
   type: "WALLET" | "CARD";
 }

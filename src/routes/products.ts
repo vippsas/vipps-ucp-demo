@@ -39,10 +39,20 @@ export async function handleGetProduct(
   const products = await loadProducts();
   const product = products.products.find((p) => p.sku === sku);
   if (!product) {
-    return new Response(JSON.stringify({ error: "Product not found" }), {
-      status: 404,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        error: {
+          type: "not_found",
+          code: "product_not_found",
+          message: `Product with SKU '${sku}' not found`,
+          param: "sku",
+        },
+      }),
+      {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
   return new Response(JSON.stringify(product), {
     status: 200,

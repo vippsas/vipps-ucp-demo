@@ -624,12 +624,18 @@ export async function handleUpdateCheckoutSession(
       ? ancillaryResult.ancillaries
       : undefined;
 
-    // Log any errors (but don't fail the request)
+    // Add any ancillary processing errors as warning messages
     if (ancillaryResult.errors.length > 0) {
+      const warningMessages: UCPMessage[] = ancillaryResult.errors.map(
+        (error) => ({
+          type: "warning" as const,
+          code: "ancillary_processing_warning",
+          content: error,
+        }),
+      );
+      session.messages = [...(session.messages ?? []), ...warningMessages];
       console.log(
-        `[UpdateCheckout] Ancillary processing warnings: ${
-          ancillaryResult.errors.join(", ")
-        }`,
+        `[UpdateCheckout] Ancillary processing warnings: ${ancillaryResult.errors.join(", ")}`,
       );
     }
   }

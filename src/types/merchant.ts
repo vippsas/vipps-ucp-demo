@@ -18,7 +18,7 @@ export interface Product {
 }
 
 export interface ProductRelationship {
-  type: "suggested" | "required";
+  type: "suggested" | "required" | "complementary";
   sku: string;
 }
 

@@ -13,7 +13,7 @@ import type {
   TotalEntry,
 } from "../types/ucp/checkout.ts";
 import type {
-  AncillariesObject,
+  AncillariesResponse,
   AncillaryCategory,
   AncillaryItem,
   AncillaryRequestItem,
@@ -22,13 +22,6 @@ import type {
   AppliedAncillary,
 } from "../types/ucp/ancillaries.ts";
 import { getProductBySku } from "../routes/products.ts";
-
-// ============================================
-// Configuration
-// ============================================
-
-/** Tax rate for calculating totals */
-const TAX_RATE = 25;
 
 // ============================================
 // Helper Functions
@@ -91,14 +84,14 @@ function productToItem(product: Product): Item {
 }
 
 /**
- * Calculate totals for an item.
+ * Calculate totals for an item (VAT-exclusive, consistent with checkout.ts).
  */
 function calculateItemTotals(price: number, quantity: number): TotalEntry[] {
   const subtotal = price * quantity;
-  const tax = Math.round(subtotal * (TAX_RATE / (100 + TAX_RATE)));
+  // Note: Line item totals don't include tax - tax is calculated at session level
+  // This matches how checkout.ts handles line items
   return [
     { type: "subtotal", amount: subtotal },
-    { type: "tax", amount: tax },
     { type: "total", amount: subtotal },
   ];
 }
@@ -327,10 +320,10 @@ export async function processAncillaryRequest(
  * Build the complete ancillaries object for a checkout session.
  * Includes suggestions and applied ancillaries.
  */
-export async function buildAncillariesObject(
+export async function buildAncillariesResponse(
   lineItems: LineItemResponse[],
   appliedAncillaries: AppliedAncillary[],
-): Promise<AncillariesObject> {
+): Promise<AncillariesResponse> {
   const appliedSkus = new Set(
     appliedAncillaries.map((a) =>
       lineItems.find((li) => li.id === a.id)?.item.id
@@ -339,7 +332,7 @@ export async function buildAncillariesObject(
 
   const suggested = await buildAncillarySuggestions(lineItems, appliedSkus);
 
-  const result: AncillariesObject = {};
+  const result: AncillariesResponse = {};
 
   if (suggested.length > 0) {
     result.title = "Recommended additions";
@@ -361,7 +354,7 @@ export async function initializeAncillaries(
   lineItems: LineItemResponse[],
 ): Promise<{
   updatedLineItems: LineItemResponse[];
-  ancillaries: AncillariesObject;
+  ancillaries: AncillariesResponse;
 }> {
   // Apply required ancillaries automatically
   const { newLineItems, newApplied } = await applyRequiredAncillaries(
@@ -372,7 +365,7 @@ export async function initializeAncillaries(
   const updatedLineItems = [...lineItems, ...newLineItems];
 
   // Build the ancillaries object
-  const ancillaries = await buildAncillariesObject(
+  const ancillaries = await buildAncillariesResponse(
     updatedLineItems,
     newApplied,
   );
@@ -389,7 +382,7 @@ export async function updateAncillaries(
   requestItems: AncillaryRequestItem[] | undefined,
 ): Promise<{
   updatedLineItems: LineItemResponse[];
-  ancillaries: AncillariesObject;
+  ancillaries: AncillariesResponse;
   errors: string[];
 }> {
   let lineItems = [...session.line_items];
@@ -428,7 +421,7 @@ export async function updateAncillaries(
   }
 
   // Build the ancillaries object
-  const ancillaries = await buildAncillariesObject(
+  const ancillaries = await buildAncillariesResponse(
     lineItems,
     appliedAncillaries,
   );

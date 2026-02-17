@@ -7,7 +7,10 @@
  * @see https://developer.vippsmobilepay.com/api/checkout/
  */
 
-import type { CheckoutSession, LineItemResponse } from "../types/ucp/checkout.ts";
+import type {
+  CheckoutSession,
+  LineItemResponse,
+} from "../types/ucp/checkout.ts";
 import type {
   CreateVippsCheckoutSessionRequest,
   VippsCheckoutConfiguration,

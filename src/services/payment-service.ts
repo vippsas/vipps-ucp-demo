@@ -11,7 +11,11 @@ import {
   getPaymentStatus,
   prefetchAccessToken,
 } from "../infrastructure/vipps_epayment_client.ts";
-import type { CheckoutSession, PaymentState, UCPMessage } from "../types.ts";
+import type {
+  CheckoutSession,
+  PaymentState,
+  UCPMessage,
+} from "../types/ucp/checkout.ts";
 import type {
   VippsEPaymentAmount,
   VippsEPaymentMSISDNCustomer,

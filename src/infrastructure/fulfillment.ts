@@ -1,55 +1,18 @@
-import type { TotalEntry } from "../types/ucp/checkout.ts";
 import type {
   FulfillmentAvailableMethodResponse,
   FulfillmentMethodResponse,
   FulfillmentOptionResponse,
-  PostalAddress,
   RetailLocationResponse,
-  ShippingDestinationResponse,
 } from "../types/ucp/fulfillment.ts";
+import {
+  fulfillmentOptions,
+  type FulfillmentOptionsStore,
+  type PickupOption,
+  type ShippingOption,
+  type StoreLocation,
+} from "../data/fulfillment-options.ts";
 
-const DATA_FILE = new URL("../data/fulfillment-options.json", import.meta.url);
-
-type ShippingOptionJson = {
-  id: string;
-  title: string;
-  description: string;
-  carrier: string;
-  delivery_days_min?: number;
-  delivery_days_max?: number;
-  same_day_hours?: { start: number; end: number };
-  totals: TotalEntry[];
-};
-
-type PickupOptionJson = {
-  id: string;
-  title: string;
-  description: string;
-  hours_until_ready: number;
-  totals: TotalEntry[];
-};
-
-type StoreLocationJson = {
-  id: string;
-  name: string;
-  address: PostalAddress;
-};
-
-type FulfillmentOptionsStore = {
-  shipping_options: ShippingOptionJson[];
-  pickup_options: PickupOptionJson[];
-  store_locations: StoreLocationJson[];
-  default_shipping_destination: ShippingDestinationResponse;
-};
-
-let cachedOptions: FulfillmentOptionsStore | null = null;
-
-async function loadFulfillmentOptions(): Promise<FulfillmentOptionsStore> {
-  if (cachedOptions) return cachedOptions;
-  const data = await Deno.readTextFile(DATA_FILE);
-  cachedOptions = JSON.parse(data);
-  return cachedOptions!;
-}
+const opts: FulfillmentOptionsStore = fulfillmentOptions;
 
 const toISO = (d: Date): string => d.toISOString();
 const futureDate = (days: number, hour = 18): string => {
@@ -65,7 +28,7 @@ const hoursFromNow = (hours: number): string => {
 };
 
 function transformShippingOption(
-  opt: ShippingOptionJson,
+  opt: ShippingOption,
 ): FulfillmentOptionResponse {
   const result: FulfillmentOptionResponse = {
     id: opt.id,
@@ -89,7 +52,7 @@ function transformShippingOption(
 }
 
 function transformPickupOption(
-  opt: PickupOptionJson,
+  opt: PickupOption,
 ): FulfillmentOptionResponse {
   return {
     id: opt.id,
@@ -101,15 +64,14 @@ function transformPickupOption(
 }
 
 function transformStoreLocation(
-  loc: StoreLocationJson,
+  loc: StoreLocation,
 ): RetailLocationResponse {
   return { id: loc.id, name: loc.name, address: loc.address };
 }
 
-export async function buildFulfillmentMethods(
+export function buildFulfillmentMethods(
   lineItemIds: string[],
-): Promise<FulfillmentMethodResponse[]> {
-  const opts = await loadFulfillmentOptions();
+): FulfillmentMethodResponse[] {
   return [
     {
       id: "shipping_1",
@@ -140,10 +102,9 @@ export async function buildFulfillmentMethods(
   ];
 }
 
-export async function buildAvailableMethods(
+export function buildAvailableMethods(
   lineItemIds: string[],
-): Promise<FulfillmentAvailableMethodResponse[]> {
-  const opts = await loadFulfillmentOptions();
+): FulfillmentAvailableMethodResponse[] {
   const firstStore = opts.store_locations[0];
   return [
     { type: "shipping", line_item_ids: lineItemIds, fulfillable_on: "now" },

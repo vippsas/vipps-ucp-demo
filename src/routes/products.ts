@@ -1,44 +1,18 @@
 import type { ErrorResponse } from "../types/ucp/checkout.ts";
-import type { Product, ProductsStore } from "../types/merchant.ts";
+import type { Product } from "../types/merchant.ts";
+import { products } from "../data/products.ts";
 
-const DATA_FILE = new URL("../data/products.json", import.meta.url);
-
-async function loadProducts(): Promise<Product[]> {
-  try {
-    const data = await Deno.readTextFile(DATA_FILE);
-    const store: ProductsStore = JSON.parse(data);
-    console.log(
-      `[PRODUCTS] Loaded ${store.products.length} products from ${DATA_FILE.pathname}`,
-    );
-    return store.products;
-  } catch (error) {
-    console.error(
-      `[PRODUCTS] Failed to load products from ${DATA_FILE.pathname}:`,
-      error,
-    );
-    return [];
-  }
-}
-
-async function saveProducts(products: Product[]): Promise<void> {
-  const store: ProductsStore = { products };
-  await Deno.writeTextFile(DATA_FILE, JSON.stringify(store, null, 2));
-}
-
-export async function handleGetProducts(_req: Request): Promise<Response> {
-  const products = await loadProducts();
-
+export function handleGetProducts(_req: Request): Response {
   return new Response(JSON.stringify({ products }), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
 }
 
-export async function handleGetProduct(
+export function handleGetProduct(
   _req: Request,
   sku: string,
-): Promise<Response> {
-  const products = await loadProducts();
+): Response {
   const product = products.find((p) => p.sku === sku);
 
   if (!product) {
@@ -62,12 +36,10 @@ export async function handleGetProduct(
   });
 }
 
-// Helper to update stock (used by checkout)
-export async function updateStock(
+export function updateStock(
   sku: string,
   quantityChange: number,
-): Promise<boolean> {
-  const products = await loadProducts();
+): boolean {
   const productIndex = products.findIndex((p) => p.sku === sku);
 
   if (productIndex === -1) {
@@ -80,12 +52,9 @@ export async function updateStock(
   }
 
   products[productIndex].stock = newStock;
-  await saveProducts(products);
   return true;
 }
 
-// Helper to get product by SKU
-export async function getProductBySku(sku: string): Promise<Product | null> {
-  const products = await loadProducts();
+export function getProductBySku(sku: string): Product | null {
   return products.find((p) => p.sku === sku) ?? null;
 }

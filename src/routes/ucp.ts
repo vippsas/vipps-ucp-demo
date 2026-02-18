@@ -1,5 +1,5 @@
-import json from "../well-known/profile.json" with { type: "json" };
+import { ucpProfile } from "../data/ucp-profile.ts";
 
 export function handleGetUCPProfile(_req: Request): Response {
-  return new Response(JSON.stringify(json));
+  return new Response(JSON.stringify(ucpProfile));
 }

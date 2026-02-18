@@ -8,9 +8,7 @@
 
 import { createDetachedSignature, getSigningKeyId } from "./signing_keys.ts";
 
-// Business service origin - used for signature verification by the platform
-const BUSINESS_ORIGIN = Deno.env.get("BUSINESS_ORIGIN") ??
-  "http://localhost:8080";
+const BUSINESS_ORIGIN = "http://localhost:8080";
 
 /**
  * Send a signed webhook to a platform's webhook URL.

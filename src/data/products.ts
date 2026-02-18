@@ -1,0 +1,59 @@
+import type { Product } from "../types/merchant.ts";
+
+export const products: Product[] = [
+  {
+    sku: "DEMO-001",
+    name: "Wireless Headphones",
+    description:
+      "Premium wireless headphones with active noise cancellation and 30-hour battery life.",
+    price: 900,
+    currency: "NOK",
+    stock: 47,
+    image_url:
+      "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400&h=400&fit=crop",
+  },
+  {
+    sku: "DEMO-002",
+    name: "USB-C Cable",
+    description:
+      "High-speed USB-C to USB-C cable, 6ft length, supports 100W charging.",
+    price: 400,
+    currency: "NOK",
+    stock: 191,
+    image_url:
+      "https://images.clasohlson.com/medias/sys_master/h00/hb3/68622828175390.jpg",
+  },
+  {
+    sku: "DEMO-003",
+    name: "Laptop Stand",
+    description:
+      "Ergonomic aluminum laptop stand with adjustable height and angle.",
+    price: 49900,
+    currency: "NOK",
+    stock: 30,
+    image_url:
+      "https://images.unsplash.com/photo-1527864550417-7fd91fc51a46?w=400&h=400&fit=crop",
+  },
+  {
+    sku: "DEMO-004",
+    name: "Mechanical Keyboard",
+    description:
+      "Full-size mechanical keyboard with RGB backlighting and Cherry MX switches.",
+    price: 159900,
+    currency: "NOK",
+    stock: 25,
+    image_url:
+      "https://images.unsplash.com/photo-1618384887929-16ec33fab9ef?w=400&h=400&fit=crop",
+  },
+  {
+    sku: "DEMO-005",
+    name: "Webcam HD",
+    description:
+      "1080p HD webcam with auto-focus, built-in microphone, and privacy cover.",
+    price: 99900,
+    currency: "NOK",
+    stock: 40,
+    image_url:
+      "https://images.clasohlson.com/medias/sys_master/h3d/h09/68622764671006.jpg",
+  },
+];

@@ -3,9 +3,14 @@
  *
  * Fetches platform profiles from UCP-Agent header profile URLs
  * to discover webhook URLs and capabilities.
+ * Cache TTL is derived from the upstream `Cache-Control` header per
+ * RFC 9111 (UCP spec: platforms SHOULD cache according to HTTP
+ * cache-control directives).
  *
  * @module
  */
+
+import { parseCacheControl } from "@std/http/unstable-cache-control";
 
 /**
  * Platform's UCP profile structure (subset of what we need)
@@ -24,18 +29,24 @@ interface PlatformProfile {
   };
 }
 
-/**
- * Simple cache for platform profiles
- */
+const DEFAULT_CACHE_TTL_S = 300;
+
 const profileCache = new Map<
   string,
   { profile: PlatformProfile; expiresAt: number }
 >();
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/** Derive a TTL (in ms) from a response's Cache-Control header. */
+function cacheTtlMs(response: Response): number {
+  const cc = parseCacheControl(response.headers.get("cache-control"));
+  const seconds = cc.maxAge ?? DEFAULT_CACHE_TTL_S;
+  return seconds * 1000;
+}
 
 /**
  * Fetch and parse a platform's UCP profile from their profile URL.
- * Results are cached for CACHE_TTL_MS.
+ * Results are cached according to the upstream `Cache-Control` max-age
+ * directive, falling back to {@link DEFAULT_CACHE_TTL_S} seconds.
  *
  * @param profileUrl - The platform's profile URL from UCP-Agent header
  * @returns The platform profile or null if fetch fails
@@ -43,7 +54,6 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 export async function fetchPlatformProfile(
   profileUrl: string,
 ): Promise<PlatformProfile | null> {
-  // Check cache
   const cached = profileCache.get(profileUrl);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.profile;
@@ -64,14 +74,16 @@ export async function fetchPlatformProfile(
     }
 
     const profile = (await response.json()) as PlatformProfile;
+    const ttl = cacheTtlMs(response);
 
-    // Cache it
     profileCache.set(profileUrl, {
       profile,
-      expiresAt: Date.now() + CACHE_TTL_MS,
+      expiresAt: Date.now() + ttl,
     });
 
-    console.log(`[PLATFORM] Profile fetched and cached`);
+    console.log(
+      `[PLATFORM] Profile fetched and cached (ttl: ${ttl / 1000}s)`,
+    );
     return profile;
   } catch (error) {
     console.warn(

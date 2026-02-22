@@ -6,6 +6,8 @@
  * @module
  */
 
+import { encodeBase64Url } from "@std/encoding/base64url";
+
 let privateKey: CryptoKey;
 let keyId: string;
 
@@ -38,8 +40,8 @@ export async function createDetachedSignature(body: string): Promise<string> {
   const encoder = new TextEncoder();
 
   const header = { alg: "ES256", kid: keyId };
-  const headerB64 = base64urlEncode(encoder.encode(JSON.stringify(header)));
-  const payloadB64 = base64urlEncode(encoder.encode(body));
+  const headerB64 = encodeBase64Url(encoder.encode(JSON.stringify(header)));
+  const payloadB64 = encodeBase64Url(encoder.encode(body));
   const signingInput = `${headerB64}.${payloadB64}`;
 
   const signature = await crypto.subtle.sign(
@@ -48,11 +50,6 @@ export async function createDetachedSignature(body: string): Promise<string> {
     encoder.encode(signingInput),
   );
 
-  const signatureB64 = base64urlEncode(new Uint8Array(signature));
+  const signatureB64 = encodeBase64Url(new Uint8Array(signature));
   return `${headerB64}..${signatureB64}`;
-}
-
-function base64urlEncode(bytes: Uint8Array): string {
-  const base64 = btoa(String.fromCharCode(...bytes));
-  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }

@@ -10,6 +10,7 @@
     "jsr:@std/html@^1.0.5": "1.0.5",
     "jsr:@std/http@1.0.25": "1.0.25",
     "jsr:@std/internal@^1.0.12": "1.0.12",
+    "jsr:@std/json@1.0.3": "1.0.3",
     "jsr:@std/media-types@^1.1.0": "1.1.0",
     "jsr:@std/net@^1.0.6": "1.0.6",
     "jsr:@std/path@^1.1.4": "1.1.4",
@@ -54,6 +55,12 @@
     "@std/internal@1.0.12": {
       "integrity": "972a634fd5bc34b242024402972cd5143eac68d8dffaca5eaa4dba30ce17b027"
     },
+    "@std/json@1.0.3": {
+      "integrity": "97d5710996293a027b7aa5f0d1f4fa29f246f269e6b5597e08807613f37d426c",
+      "dependencies": [
+        "jsr:@std/streams"
+      ]
+    },
     "@std/media-types@1.1.0": {
       "integrity": "c9d093f0c05c3512932b330e3cc1fe1d627b301db33a4c2c2185c02471d6eaa4"
     },
@@ -75,7 +82,8 @@
       "jsr:@hono/hono@4.11.10",
       "jsr:@std/dotenv@~0.225.6",
       "jsr:@std/encoding@^1.0.10",
-      "jsr:@std/http@1.0.25"
+      "jsr:@std/http@1.0.25",
+      "jsr:@std/json@1.0.3"
     ]
   }
 }

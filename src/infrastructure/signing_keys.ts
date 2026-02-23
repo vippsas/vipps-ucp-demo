@@ -2,11 +2,15 @@
  * UCP Signing Keys for webhook signature generation.
  *
  * Generates an ECDSA P-256 key pair at startup for signing webhooks.
+ * Payloads are canonicalized with JCS (RFC 8785) before signing per the
+ * UCP AP2 Mandates specification.
  *
  * @module
  */
 
 import { encodeBase64Url } from "@std/encoding/base64url";
+import { canonicalizeToBytes } from "@std/json/unstable-canonicalize";
+import type { JsonValue } from "@std/json/types";
 
 let privateKey: CryptoKey;
 let keyId: string;
@@ -31,17 +35,22 @@ export function getSigningKeyId(): string {
 }
 
 /**
- * Create a detached JWT signature for a request body (RFC 7797).
+ * Create a detached JWS signature (RFC 7515 Appendix F) over a
+ * JCS-canonicalized (RFC 8785) payload.
  *
- * Returns header..signature (empty payload section).
- * The actual payload is the request body, which the receiver will use for verification.
+ * Returns `header..signature` (empty payload section).
+ * The receiver reconstructs the signing input by canonicalizing the
+ * request body themselves.
  */
-export async function createDetachedSignature(body: string): Promise<string> {
-  const encoder = new TextEncoder();
+export async function createDetachedSignature(
+  payload: JsonValue,
+): Promise<string> {
+  const canonicalBytes = canonicalizeToBytes(payload);
 
+  const encoder = new TextEncoder();
   const header = { alg: "ES256", kid: keyId };
   const headerB64 = encodeBase64Url(encoder.encode(JSON.stringify(header)));
-  const payloadB64 = encodeBase64Url(encoder.encode(body));
+  const payloadB64 = encodeBase64Url(canonicalBytes);
   const signingInput = `${headerB64}.${payloadB64}`;
 
   const signature = await crypto.subtle.sign(

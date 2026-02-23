@@ -8,7 +8,7 @@
     "jsr:@std/fmt@^1.0.9": "1.0.9",
     "jsr:@std/fs@^1.0.23": "1.0.23",
     "jsr:@std/html@^1.0.5": "1.0.5",
-    "jsr:@std/http@1.0.25": "1.0.25",
+    "jsr:@std/http@^1.0.25": "1.0.25",
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "jsr:@std/json@1.0.3": "1.0.3",
     "jsr:@std/media-types@^1.1.0": "1.1.0",
@@ -82,7 +82,7 @@
       "jsr:@hono/hono@4.11.10",
       "jsr:@std/dotenv@~0.225.6",
       "jsr:@std/encoding@^1.0.10",
-      "jsr:@std/http@1.0.25",
+      "jsr:@std/http@^1.0.25",
       "jsr:@std/json@1.0.3"
     ]
   }

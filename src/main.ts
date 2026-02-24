@@ -3,7 +3,6 @@ import { cors } from "hono/cors";
 import { loadConfig } from "./infrastructure/config.ts";
 import { UCP_HEADERS } from "./infrastructure/ucp_headers.ts";
 import { initSigningKeys } from "./infrastructure/signing_keys.ts";
-import { handleGetProduct, handleGetProducts } from "./routes/products.ts";
 import {
   handleCancelCheckout,
   handleCompleteCheckout,
@@ -41,12 +40,6 @@ app.use(
 app.get("/health", (c) => c.json({ ok: true, data: "ok" }));
 
 app.get("/.well-known/ucp", (c) => handleGetUCPProfile(c.req.raw));
-
-app.get("/products", (c) => handleGetProducts(c.req.raw));
-app.get(
-  "/products/:sku",
-  (c) => handleGetProduct(c.req.raw, c.req.param("sku")),
-);
 
 app.post("/checkout_sessions", (c) => handleCreateCheckoutSession(c.req.raw));
 app.get(

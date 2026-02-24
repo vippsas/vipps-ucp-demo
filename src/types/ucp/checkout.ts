@@ -76,8 +76,30 @@ export type PaymentState =
   | "expired"
   | "cancelled";
 
+/**
+ * UCP payment handler descriptor — advertises which payment methods the
+ * business supports so the platform can collect the right instrument.
+ */
+export interface PaymentHandler {
+  id: string;
+  name: string;
+  version: string;
+  spec: string;
+  config_schema: string;
+  instrument_schemas: string[];
+  config: Record<string, unknown>;
+}
+
+/**
+ * UCP-compliant payment section returned in checkout responses.
+ *
+ * `handlers` describes available payment methods (always present).
+ * The remaining fields track Vipps payment lifecycle state and are
+ * populated once a complete request has been initiated.
+ */
 export interface CheckoutPaymentInfo {
-  state: PaymentState;
+  handlers: PaymentHandler[];
+  state?: PaymentState;
   vipps_reference?: string;
   expires_at?: string; // RFC 3339
   psp_reference?: string;
@@ -156,7 +178,7 @@ export interface CheckoutSession {
   shipping_address?: Address;
   billing_address?: Address;
   fulfillment?: FulfillmentResponse;
-  payment?: CheckoutPaymentInfo;
+  payment: CheckoutPaymentInfo;
   messages?: UCPMessage[];
   order?: Order;
   expires_at?: string; // RFC 3339
@@ -170,9 +192,19 @@ export interface CheckoutSession {
   platform_profile_url?: string;
 }
 
+export interface CreateCheckoutLineItem {
+  sku: string;
+  quantity: number;
+  title: string;
+  price: number; // minor units
+  image_url?: string;
+  shop_name?: string;
+  shop_url?: string;
+}
+
 export interface CreateCheckoutSessionRequest {
   currency?: string;
-  line_items: Array<{ sku: string; quantity: number }>;
+  line_items: CreateCheckoutLineItem[];
   buyer?: Buyer;
   shipping_address?: Address;
   billing_address?: Address;

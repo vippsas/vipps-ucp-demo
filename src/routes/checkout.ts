@@ -22,6 +22,7 @@ import type {
   Item,
   LineItemResponse,
   Link,
+  PaymentHandler,
   TotalEntry,
   UCPMessage,
   UCPResponseMetadata,
@@ -37,7 +38,6 @@ import {
   saveSessions,
 } from "../infrastructure/sessions.ts";
 import type { VippsEPaymentAmount } from "../types/vipps/epayment.ts";
-import { getProductBySku, updateStock } from "./products.ts";
 
 const SESSION_EXPIRY_HOURS = 24;
 const UCP_VERSION = "2026-01-11";
@@ -87,6 +87,26 @@ const SERVICE_CAPABILITIES = [
   { name: "payment" },
   { name: "shipping" },
   { name: "products" },
+];
+
+/** Payment handler matching the /.well-known/ucp profile */
+const PAYMENT_HANDLERS: PaymentHandler[] = [
+  {
+    id: "vippsmobilepay_wallet_handler",
+    name: "com.vippsmobilepay.pay.payment_handler",
+    version: "2026-01-23",
+    spec:
+      "https://vippsmobilepay.com/pay/ucp/2026-01-23/vipps_mp_payment_handler",
+    config_schema:
+      "https://vippsmobilepay.com/pay/ucp/2026-01-23/schemas/wallet_payment_handler.json",
+    instrument_schemas: [
+      "https://vippsmobilepay.com/pay/ucp/2026-01-23/schemas/wallet_payment_instrument.json",
+    ],
+    config: {
+      merchant_serial_number: "168850",
+      environment: "TEST",
+    },
+  },
 ];
 
 function jsonError(
@@ -157,45 +177,29 @@ export async function handleCreateCheckoutSession(
     );
   }
 
-  // Build line items with product details (UCP spec format)
+  // Build line items from request data (UCP spec format)
   const lineItems: LineItemResponse[] = [];
-  let currency = body.currency ?? "NOK"; // Default to NOK for Vipps
+  const currency = body.currency ?? "NOK";
 
   for (let idx = 0; idx < body.line_items.length; idx++) {
     const reqItem = body.line_items[idx];
-    const product = await getProductBySku(reqItem.sku);
 
-    if (!product) {
+    if (!reqItem.title || reqItem.price == null) {
       return jsonError(
         400,
         "invalid_request",
-        "product_not_found",
-        `Product with SKU '${reqItem.sku}' not found`,
-        "$.line_items[].sku",
+        "missing_product_details",
+        `Line item at index ${idx} must include 'title' and 'price'`,
+        `$.line_items[${idx}]`,
       );
     }
 
-    if (product.stock < reqItem.quantity) {
-      return jsonError(
-        400,
-        "invalid_request",
-        "insufficient_stock",
-        `Insufficient stock for '${product.name}'. Available: ${product.stock}, Requested: ${reqItem.quantity}`,
-        "$.line_items[].quantity",
-      );
-    }
-
-    // Use the product's currency (all products in an order should have the same currency)
-    currency = product.currency.toUpperCase();
-
-    // Build UCP-compliant line item
-    const itemSubtotal = product.price * reqItem.quantity;
+    const itemSubtotal = reqItem.price * reqItem.quantity;
     const item: Item = {
-      id: product.sku,
-      title: product.name,
-      price: product.price,
-      description: product.description,
-      image_url: product.image_url,
+      id: reqItem.sku,
+      title: reqItem.title,
+      price: reqItem.price,
+      image_url: reqItem.image_url,
     };
 
     lineItems.push({
@@ -253,6 +257,9 @@ export async function handleCreateCheckoutSession(
     fulfillment: {
       methods: fulfillmentMethods,
       available_methods: availableMethods,
+    },
+    payment: {
+      handlers: PAYMENT_HANDLERS,
     },
     created_at: now.toISOString(),
     updated_at: now.toISOString(),
@@ -889,16 +896,6 @@ export async function handleCompleteCheckout(
   const paymentExpiresAt = new Date(now.getTime() + PAYMENT_TIMEOUT_MS);
 
   if (paymentResult.data.state === "AUTHORIZED") {
-    // Rare case: immediate authorization (e.g., test mode or pre-authorized)
-    // Update stock and complete
-    for (const item of session.line_items) {
-      const success = await updateStock(item.item.id, -item.quantity);
-      if (!success) {
-        console.error(`[Checkout] Stock update failed for ${item.item.id}`);
-        // In production, would need to handle this gracefully
-      }
-    }
-
     session.status = "completed";
     session.order = {
       id: `order-${session.id}`,
@@ -915,6 +912,7 @@ export async function handleCompleteCheckout(
     // Return complete_in_progress immediately - don't block waiting for user
     session.status = "complete_in_progress";
     session.payment = {
+      ...session.payment,
       state: "pending_approval",
       vipps_reference: paymentResult.data.reference,
       expires_at: paymentExpiresAt.toISOString(),
@@ -1060,20 +1058,10 @@ export async function handleVippsCallback(req: Request): Promise<Response> {
 
   switch (callback.state) {
     case "AUTHORIZED": {
-      // Payment approved! Update stock and complete the order
       console.log(`[VippsCallback] Payment AUTHORIZED for ${session.id}`);
-
-      for (const item of session.line_items) {
-        const success = await updateStock(item.item.id, -item.quantity);
-        if (!success) {
-          console.error(
-            `[VippsCallback] Stock update failed for ${item.item.id}`,
-          );
-        }
-      }
-
       session.status = "completed";
       session.payment = {
+        ...session.payment,
         state: "approved",
         vipps_reference: callback.reference,
         psp_reference: callback.pspReference,
@@ -1293,16 +1281,9 @@ async function processPaymentAuthorized(
 
   const now = new Date();
 
-  // Update stock
-  for (const item of session.line_items) {
-    const success = await updateStock(item.item.id, -item.quantity);
-    if (!success) {
-      console.error(`[VippsPolling] Stock update failed for ${item.item.id}`);
-    }
-  }
-
   session.status = "completed";
   session.payment = {
+    ...session.payment,
     state: "approved",
     vipps_reference: vippsReference,
     psp_reference: pspReference,

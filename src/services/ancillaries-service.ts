@@ -119,7 +119,22 @@ export async function buildAncillarySuggestions(
 
   for (const lineItem of lineItems) {
     const product = await getProductBySku(lineItem.item.id);
-    if (!product?.relationships) continue;
+    if (product === null) {
+      // TEMP: Auto apply insurance for demo purposes
+      const insuranceProduct = await getProductBySku("DEMO-007");
+      if (insuranceProduct) {
+        suggestions.push({
+          item: productToAncillaryItem(insuranceProduct),
+          type: relationshipTypeToSuggestionType("suggested"),
+          category: productTypeToCategory("service"),
+          for: lineItem.id,
+          description: insuranceProduct.description,
+        });
+      }
+      continue;
+    }
+
+    if (!product.relationships) continue;
 
     for (const relationship of product.relationships) {
       // Skip if already applied or already suggested

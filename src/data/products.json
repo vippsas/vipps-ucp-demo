@@ -99,6 +99,16 @@
       "stock": 10,
       "image_url": "https://www.example.com/drip-tray.png",
       "type": "product"
+    },
+    {
+      "sku": "DEMO-009",
+      "name": "Headphone Carrying Case",
+      "description": "Premium hard-shell carrying case with custom foam interior. Protects your headphones during travel.",
+      "price": 29900,
+      "currency": "NOK",
+      "stock": 50,
+      "image_url": "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=400&h=400&fit=crop",
+      "type": "product"
     }
   ]
 }

@@ -112,24 +112,55 @@ function generateLineItemId(): string {
  */
 export async function buildAncillarySuggestions(
   lineItems: LineItemResponse[],
-  appliedAncillarySkus: Set<string>,
+  appliedAncillaries: AppliedAncillary[],
 ): Promise<AncillarySuggestion[]> {
   const suggestions: AncillarySuggestion[] = [];
   const seenSkus = new Set<string>();
 
+  // Demo: Fetch upsell products for suggestions
+  const insuranceProduct = await getProductBySku("DEMO-007");
+  const headphoneCaseProduct = await getProductBySku("DEMO-009");
+
+  const hasInsurance = lineItems.some((a) =>
+    a.item.id === insuranceProduct?.sku
+  );
+  const hasHeadphoneCase = lineItems.some((a) =>
+    a.item.id === headphoneCaseProduct?.sku
+  );
+
   for (const lineItem of lineItems) {
     const product = await getProductBySku(lineItem.item.id);
+
+    // Demo: Suggest headphone case when buying headphones (DEMO-001)
+    if (
+      lineItem.item.id === "DEMO-001" && headphoneCaseProduct &&
+      !hasHeadphoneCase
+    ) {
+      if (!seenSkus.has(headphoneCaseProduct.sku)) {
+        seenSkus.add(headphoneCaseProduct.sku);
+        suggestions.push({
+          item: productToAncillaryItem(headphoneCaseProduct),
+          type: "complementary",
+          category: "product",
+          for: lineItem.id,
+          description: headphoneCaseProduct.description,
+        });
+      }
+    }
+
     if (product === null) {
       // TEMP: Auto apply insurance for demo purposes
-      const insuranceProduct = await getProductBySku("DEMO-007");
-      if (insuranceProduct) {
-        suggestions.push({
-          item: productToAncillaryItem(insuranceProduct),
-          type: relationshipTypeToSuggestionType("suggested"),
-          category: productTypeToCategory("service"),
-          for: lineItem.id,
-          description: insuranceProduct.description,
-        });
+      if (insuranceProduct && !hasInsurance) {
+        if (!seenSkus.has(insuranceProduct.sku)) {
+          seenSkus.add(insuranceProduct.sku);
+          suggestions.push({
+            item: productToAncillaryItem(insuranceProduct),
+            type: "suggested",
+            category: "service",
+            for: lineItem.id,
+            description: insuranceProduct.description,
+          });
+        }
       }
       continue;
     }
@@ -138,7 +169,11 @@ export async function buildAncillarySuggestions(
 
     for (const relationship of product.relationships) {
       // Skip if already applied or already suggested
-      if (appliedAncillarySkus.has(relationship.sku)) continue;
+      if (
+        appliedAncillaries.some((a) =>
+          a.for == lineItem.id && a.id === relationship.sku
+        )
+      ) continue;
       if (seenSkus.has(relationship.sku)) continue;
 
       const relatedProduct = await getProductBySku(relationship.sku);
@@ -339,13 +374,10 @@ export async function buildAncillariesResponse(
   lineItems: LineItemResponse[],
   appliedAncillaries: AppliedAncillary[],
 ): Promise<AncillariesResponse> {
-  const appliedSkus = new Set(
-    appliedAncillaries.map((a) =>
-      lineItems.find((li) => li.id === a.id)?.item.id
-    ).filter(Boolean) as string[],
+  const suggested = await buildAncillarySuggestions(
+    lineItems,
+    appliedAncillaries,
   );
-
-  const suggested = await buildAncillarySuggestions(lineItems, appliedSkus);
 
   const result: AncillariesResponse = {};
 

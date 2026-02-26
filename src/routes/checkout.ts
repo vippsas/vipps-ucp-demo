@@ -44,7 +44,7 @@ import {
   saveSessions,
 } from "../infrastructure/sessions.ts";
 import type { VippsEPaymentAmount } from "../types/vipps/epayment.ts";
-import { ucpProfile } from "../data/ucp-profile.ts";
+import { mapPaymentHandlers } from "../infrastructure/ucp_profile.ts";
 
 const SESSION_EXPIRY_HOURS = 24;
 
@@ -91,8 +91,6 @@ export async function handleCreateCheckoutSession(
 
   // Parse UCP headers from the request
   const ucpHeaders = parseUCPHeaders(req);
-
-  const platformUcpProfile = ucpProfile;
 
   // Log agent information if present
   let platformWebhookUrl: string | undefined;
@@ -212,22 +210,7 @@ export async function handleCreateCheckoutSession(
     now.getTime() + SESSION_EXPIRY_HOURS * 60 * 60 * 1000,
   );
 
-  // Map payment handlers to UCP spec format: { handler_name: [versions] }
-  const mapPaymentHandlers = (
-    handlers: Record<string, Array<{ version: string }>> | undefined,
-  ): Record<string, string[]> | undefined => {
-    if (!handlers) return undefined;
-    const mapped: Record<string, string[]> = {};
-    for (const [name, versions] of Object.entries(handlers)) {
-      mapped[name] = versions.map((v) => v.version);
-    }
-    return mapped;
-  };
-
-  const paymentHandlers = mapPaymentHandlers(
-    platformUcpProfile?.ucp.payment_handlers,
-  );
-
+  const paymentHandlers = mapPaymentHandlers();
   // Create the UCP session object (spec-compliant format)
   const session: CheckoutSession = {
     ucp: getUCPResponseMetadata(),

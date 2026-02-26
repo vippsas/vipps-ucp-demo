@@ -175,6 +175,20 @@ export function getPaymentHandlerId(namespace: string): string | undefined {
 }
 
 /**
+ * Get the payment handlers in the format expected by UCP.
+ * { handler_name: [versions] }
+ */
+export function mapPaymentHandlers(): Record<string, string[]> | undefined {
+  const handlers = getProfile().ucp.payment_handlers;
+  if (!handlers) return undefined;
+  const mapped: Record<string, string[]> = {};
+  for (const [name, versions] of Object.entries(handlers)) {
+    mapped[name] = versions.map((v) => v.version);
+  }
+  return mapped;
+}
+
+/**
  * Get all payment handler IDs supported by this business.
  */
 export function getPaymentHandlerIds(): string[] {

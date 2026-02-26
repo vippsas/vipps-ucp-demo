@@ -8,22 +8,21 @@
  */
 
 import {
-  isBareItemType,
+  type BareItem,
+  date,
+  integer,
   isItem,
+  item,
+  type Item,
   parseDictionary,
   parseItem,
   parseList,
   serializeDictionary,
   serializeItem,
   serializeList,
-  type SfBareItem,
-  sfDate,
-  sfInteger,
-  type SfItem,
-  type SfList,
-  sfString,
-  sfToken,
-} from "./structured_fields.ts";
+  string,
+  token,
+} from "@std/http/unstable-structured-fields";
 
 // =============================================================================
 // UCP-Agent Header
@@ -62,27 +61,18 @@ export interface UCPAgentInfo {
  * ```
  */
 export function serializeUCPAgent(agent: UCPAgentInfo): string {
-  const entries: [string, SfItem][] = [
-    ["profile", { value: sfString(agent.profile), parameters: new Map() }],
+  const entries: [string, Item][] = [
+    ["profile", item(string(agent.profile))],
   ];
 
   if (agent.name !== undefined) {
-    entries.push(["name", {
-      value: sfString(agent.name),
-      parameters: new Map(),
-    }]);
+    entries.push(["name", item(string(agent.name))]);
   }
   if (agent.version !== undefined) {
-    entries.push(["version", {
-      value: sfInteger(agent.version),
-      parameters: new Map(),
-    }]);
+    entries.push(["version", item(integer(agent.version))]);
   }
   if (agent.instanceId !== undefined) {
-    entries.push(["instance-id", {
-      value: sfString(agent.instanceId),
-      parameters: new Map(),
-    }]);
+    entries.push(["instance-id", item(string(agent.instanceId))]);
   }
 
   return serializeDictionary(new Map(entries));
@@ -100,7 +90,7 @@ export function parseUCPAgent(header: string): UCPAgentInfo | null {
     const profileItem = dict.get("profile");
     if (
       !profileItem || !isItem(profileItem) ||
-      !isBareItemType(profileItem.value, "string")
+      profileItem.value.type !== "string"
     ) {
       return null;
     }
@@ -111,7 +101,7 @@ export function parseUCPAgent(header: string): UCPAgentInfo | null {
 
     const nameItem = dict.get("name");
     if (
-      nameItem && isItem(nameItem) && isBareItemType(nameItem.value, "string")
+      nameItem && isItem(nameItem) && nameItem.value.type === "string"
     ) {
       result.name = nameItem.value.value;
     }
@@ -119,7 +109,7 @@ export function parseUCPAgent(header: string): UCPAgentInfo | null {
     const versionItem = dict.get("version");
     if (
       versionItem && isItem(versionItem) &&
-      isBareItemType(versionItem.value, "integer")
+      versionItem.value.type === "integer"
     ) {
       result.version = versionItem.value.value;
     }
@@ -127,7 +117,7 @@ export function parseUCPAgent(header: string): UCPAgentInfo | null {
     const instanceIdItem = dict.get("instance-id");
     if (
       instanceIdItem && isItem(instanceIdItem) &&
-      isBareItemType(instanceIdItem.value, "string")
+      instanceIdItem.value.type === "string"
     ) {
       result.instanceId = instanceIdItem.value.value;
     }
@@ -170,20 +160,17 @@ export interface UCPCapability {
 export function serializeUCPCapabilities(
   capabilities: UCPCapability[],
 ): string {
-  const list: SfList = capabilities.map((cap) => {
-    const parameters = new Map<string, SfBareItem>();
+  const list = capabilities.map((cap) => {
+    const parameters: [string, BareItem][] = [];
 
     if (cap.version !== undefined) {
-      parameters.set("version", sfString(cap.version));
+      parameters.push(["version", string(cap.version)]);
     }
     if (cap.required === true) {
-      parameters.set("required", { type: "boolean", value: true });
+      parameters.push(["required", { type: "boolean", value: true }]);
     }
 
-    return {
-      value: sfToken(cap.name),
-      parameters,
-    };
+    return item(token(cap.name), parameters);
   });
 
   return serializeList(list);
@@ -201,17 +188,17 @@ export function parseUCPCapabilities(header: string): UCPCapability[] | null {
 
     for (const member of list) {
       if (!isItem(member)) continue;
-      if (!isBareItemType(member.value, "token")) continue;
+      if (member.value.type !== "token") continue;
 
       const cap: UCPCapability = { name: member.value.value };
 
       const versionParam = member.parameters.get("version");
-      if (versionParam && isBareItemType(versionParam, "string")) {
+      if (versionParam && versionParam.type === "string") {
         cap.version = versionParam.value;
       }
 
       const requiredParam = member.parameters.get("required");
-      if (requiredParam && isBareItemType(requiredParam, "boolean")) {
+      if (requiredParam && requiredParam.type === "boolean") {
         cap.required = requiredParam.value;
       }
 
@@ -259,28 +246,21 @@ export interface UCPAllowance {
  * ```
  */
 export function serializeUCPAllowance(allowance: UCPAllowance): string {
-  const entries: [string, SfItem][] = [
+  const entries: [string, Item][] = [
     [
       "max-amount",
-      {
-        value: sfInteger(allowance.maxAmount),
-        parameters: new Map([["currency", sfString(allowance.currency)]]),
-      },
+      item(integer(allowance.maxAmount), [
+        ["currency", string(allowance.currency)],
+      ]),
     ],
-    ["expires", { value: sfDate(allowance.expiresAt), parameters: new Map() }],
+    ["expires", item(date(allowance.expiresAt))],
   ];
 
   if (allowance.merchantId !== undefined) {
-    entries.push(["merchant", {
-      value: sfString(allowance.merchantId),
-      parameters: new Map(),
-    }]);
+    entries.push(["merchant", item(string(allowance.merchantId))]);
   }
   if (allowance.sessionId !== undefined) {
-    entries.push(["session", {
-      value: sfString(allowance.sessionId),
-      parameters: new Map(),
-    }]);
+    entries.push(["session", item(string(allowance.sessionId))]);
   }
 
   return serializeDictionary(new Map(entries));
@@ -298,20 +278,20 @@ export function parseUCPAllowance(header: string): UCPAllowance | null {
     const maxAmountItem = dict.get("max-amount");
     if (
       !maxAmountItem || !isItem(maxAmountItem) ||
-      !isBareItemType(maxAmountItem.value, "integer")
+      maxAmountItem.value.type !== "integer"
     ) {
       return null;
     }
 
     const currencyParam = maxAmountItem.parameters.get("currency");
-    if (!currencyParam || !isBareItemType(currencyParam, "string")) {
+    if (!currencyParam || currencyParam.type !== "string") {
       return null;
     }
 
     const expiresItem = dict.get("expires");
     if (
       !expiresItem || !isItem(expiresItem) ||
-      !isBareItemType(expiresItem.value, "date")
+      expiresItem.value.type !== "date"
     ) {
       return null;
     }
@@ -325,7 +305,7 @@ export function parseUCPAllowance(header: string): UCPAllowance | null {
     const merchantItem = dict.get("merchant");
     if (
       merchantItem && isItem(merchantItem) &&
-      isBareItemType(merchantItem.value, "string")
+      merchantItem.value.type === "string"
     ) {
       result.merchantId = merchantItem.value.value;
     }
@@ -333,7 +313,7 @@ export function parseUCPAllowance(header: string): UCPAllowance | null {
     const sessionItem = dict.get("session");
     if (
       sessionItem && isItem(sessionItem) &&
-      isBareItemType(sessionItem.value, "string")
+      sessionItem.value.type === "string"
     ) {
       result.sessionId = sessionItem.value.value;
     }
@@ -374,19 +354,16 @@ export interface UCPIdempotency {
  * ```
  */
 export function serializeUCPIdempotency(idempotency: UCPIdempotency): string {
-  const parameters = new Map<string, SfBareItem>();
+  const parameters: [string, BareItem][] = [];
 
   if (idempotency.createdAt !== undefined) {
-    parameters.set("created", sfDate(idempotency.createdAt));
+    parameters.push(["created", date(idempotency.createdAt)]);
   }
   if (idempotency.ttl !== undefined) {
-    parameters.set("ttl", sfInteger(idempotency.ttl));
+    parameters.push(["ttl", integer(idempotency.ttl)]);
   }
 
-  return serializeItem({
-    value: sfString(idempotency.key),
-    parameters,
-  });
+  return serializeItem(item(string(idempotency.key), parameters));
 }
 
 /**
@@ -396,23 +373,23 @@ export function serializeUCPIdempotency(idempotency: UCPIdempotency): string {
  */
 export function parseUCPIdempotency(header: string): UCPIdempotency | null {
   try {
-    const item = parseItem(header);
+    const parsed = parseItem(header);
 
-    if (!isBareItemType(item.value, "string")) {
+    if (parsed.value.type !== "string") {
       return null;
     }
 
     const result: UCPIdempotency = {
-      key: item.value.value,
+      key: parsed.value.value,
     };
 
-    const createdParam = item.parameters.get("created");
-    if (createdParam && isBareItemType(createdParam, "date")) {
+    const createdParam = parsed.parameters.get("created");
+    if (createdParam && createdParam.type === "date") {
       result.createdAt = createdParam.value;
     }
 
-    const ttlParam = item.parameters.get("ttl");
-    if (ttlParam && isBareItemType(ttlParam, "integer")) {
+    const ttlParam = parsed.parameters.get("ttl");
+    if (ttlParam && ttlParam.type === "integer") {
       result.ttl = ttlParam.value;
     }
 
@@ -444,30 +421,18 @@ export interface UCPRequestContext {
  * Serializes request context to a UCP-Request-Context header value.
  */
 export function serializeUCPRequestContext(context: UCPRequestContext): string {
-  const entries: [string, SfItem][] = [
-    ["request-id", {
-      value: sfString(context.requestId),
-      parameters: new Map(),
-    }],
+  const entries: [string, Item][] = [
+    ["request-id", item(string(context.requestId))],
   ];
 
   if (context.correlationId !== undefined) {
-    entries.push(["correlation-id", {
-      value: sfString(context.correlationId),
-      parameters: new Map(),
-    }]);
+    entries.push(["correlation-id", item(string(context.correlationId))]);
   }
   if (context.sessionId !== undefined) {
-    entries.push(["session-id", {
-      value: sfString(context.sessionId),
-      parameters: new Map(),
-    }]);
+    entries.push(["session-id", item(string(context.sessionId))]);
   }
   if (context.timestamp !== undefined) {
-    entries.push(["timestamp", {
-      value: sfDate(context.timestamp),
-      parameters: new Map(),
-    }]);
+    entries.push(["timestamp", item(date(context.timestamp))]);
   }
 
   return serializeDictionary(new Map(entries));
@@ -485,7 +450,7 @@ export function parseUCPRequestContext(
     const requestIdItem = dict.get("request-id");
     if (
       !requestIdItem || !isItem(requestIdItem) ||
-      !isBareItemType(requestIdItem.value, "string")
+      requestIdItem.value.type !== "string"
     ) {
       return null;
     }
@@ -497,7 +462,7 @@ export function parseUCPRequestContext(
     const correlationIdItem = dict.get("correlation-id");
     if (
       correlationIdItem && isItem(correlationIdItem) &&
-      isBareItemType(correlationIdItem.value, "string")
+      correlationIdItem.value.type === "string"
     ) {
       result.correlationId = correlationIdItem.value.value;
     }
@@ -505,7 +470,7 @@ export function parseUCPRequestContext(
     const sessionIdItem = dict.get("session-id");
     if (
       sessionIdItem && isItem(sessionIdItem) &&
-      isBareItemType(sessionIdItem.value, "string")
+      sessionIdItem.value.type === "string"
     ) {
       result.sessionId = sessionIdItem.value.value;
     }
@@ -513,7 +478,7 @@ export function parseUCPRequestContext(
     const timestampItem = dict.get("timestamp");
     if (
       timestampItem && isItem(timestampItem) &&
-      isBareItemType(timestampItem.value, "date")
+      timestampItem.value.type === "date"
     ) {
       result.timestamp = timestampItem.value.value;
     }
@@ -588,21 +553,19 @@ export function parseUCPHeaders(
     }
   }
 
+  const agent = headers.get(UCP_HEADERS.AGENT);
+  const capabilities = headers.get(UCP_HEADERS.CAPABILITIES);
+  const allowance = headers.get(UCP_HEADERS.ALLOWANCE);
+  const idempotency = headers.get(UCP_HEADERS.IDEMPOTENCY);
+  const requestContext = headers.get(UCP_HEADERS.REQUEST_CONTEXT);
+
   return {
-    agent: headers.has(UCP_HEADERS.AGENT)
-      ? parseUCPAgent(headers.get(UCP_HEADERS.AGENT)!)
-      : null,
-    capabilities: headers.has(UCP_HEADERS.CAPABILITIES)
-      ? parseUCPCapabilities(headers.get(UCP_HEADERS.CAPABILITIES)!)
-      : null,
-    allowance: headers.has(UCP_HEADERS.ALLOWANCE)
-      ? parseUCPAllowance(headers.get(UCP_HEADERS.ALLOWANCE)!)
-      : null,
-    idempotency: headers.has(UCP_HEADERS.IDEMPOTENCY)
-      ? parseUCPIdempotency(headers.get(UCP_HEADERS.IDEMPOTENCY)!)
-      : null,
-    requestContext: headers.has(UCP_HEADERS.REQUEST_CONTEXT)
-      ? parseUCPRequestContext(headers.get(UCP_HEADERS.REQUEST_CONTEXT)!)
+    agent: agent ? parseUCPAgent(agent) : null,
+    capabilities: capabilities ? parseUCPCapabilities(capabilities) : null,
+    allowance: allowance ? parseUCPAllowance(allowance) : null,
+    idempotency: idempotency ? parseUCPIdempotency(idempotency) : null,
+    requestContext: requestContext
+      ? parseUCPRequestContext(requestContext)
       : null,
     apiVersion: headers.get(UCP_HEADERS.API_VERSION),
   };

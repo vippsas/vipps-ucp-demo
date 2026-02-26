@@ -6,11 +6,11 @@
  * @module
  */
 
+import { canonicalize } from "@std/json/unstable-canonicalize";
+import type { JsonValue } from "@std/json/types";
 import { createDetachedSignature, getSigningKeyId } from "./signing_keys.ts";
 
-// Business service origin - used for signature verification by the platform
-const BUSINESS_ORIGIN = Deno.env.get("BUSINESS_ORIGIN") ??
-  "http://localhost:8080";
+const BUSINESS_ORIGIN = "http://localhost:8080";
 
 /**
  * Send a signed webhook to a platform's webhook URL.
@@ -21,12 +21,11 @@ const BUSINESS_ORIGIN = Deno.env.get("BUSINESS_ORIGIN") ??
  */
 export async function sendOrderWebhook(
   webhookUrl: string,
-  payload: Record<string, unknown>,
+  payload: JsonValue,
 ): Promise<Response> {
-  const body = JSON.stringify(payload);
+  const body = canonicalize(payload);
 
-  // Create the detached signature
-  const signature = await createDetachedSignature(body);
+  const signature = await createDetachedSignature(payload);
 
   console.log(`[WEBHOOK] Sending order event to ${webhookUrl}`);
   console.log(`[WEBHOOK] Origin: ${BUSINESS_ORIGIN}`);
@@ -57,6 +56,12 @@ export async function sendOrderWebhook(
  * @param carrier - Shipping carrier (e.g., "PostNord", "Bring")
  * @param status - Fulfillment status: "shipped", "in_transit", or "delivered"
  */
+/** Minimal shape exposed to callers; the full payload is a {@link JsonValue}. */
+export interface OrderEvent {
+  event_id: string;
+  [key: string]: JsonValue | undefined;
+}
+
 export function createShippedOrderEvent(
   orderId: string,
   checkoutId: string,
@@ -64,7 +69,7 @@ export function createShippedOrderEvent(
   trackingUrl: string,
   carrier: string = "PostNord",
   status: "shipped" | "in_transit" | "delivered" = "delivered",
-): Record<string, unknown> & { event_id: string } {
+): OrderEvent {
   const now = new Date().toISOString();
   const eventId = `evt-${crypto.randomUUID()}`;
 

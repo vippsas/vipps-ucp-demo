@@ -27,7 +27,6 @@ import {
 import type {
   CheckoutSession,
   CreateCheckoutSessionRequest,
-  ErrorResponse,
   Item,
   LineItemResponse,
   Link,
@@ -39,22 +38,14 @@ import type {
   CompleteCheckoutRequest,
   WalletPaymentInstrument,
 } from "../types/ucp/payment.ts";
-import type { SessionsStore } from "../types/merchant.ts";
-import type {
-  CreateVippsCheckoutSessionRequest,
-  CreateVippsCheckoutSessionResponse,
-  VippsCheckoutConfiguration,
-  VippsCheckoutError,
-  VippsMerchantInfo,
-  VippsOrderLine,
-  VippsOrderSummary,
-  VippsPrefillCustomer,
-  VippsTransactionRequest,
-} from "../types/vipps/checkout.ts";
+import {
+  generateSessionId,
+  loadSessions,
+  saveSessions,
+} from "../infrastructure/sessions.ts";
 import type { VippsEPaymentAmount } from "../types/vipps/epayment.ts";
-import { getProductBySku, updateStock } from "./products.ts";
+import { ucpProfile } from "../data/ucp-profile.ts";
 
-const DATA_FILE = new URL("../data/sessions.json", import.meta.url).pathname;
 const SESSION_EXPIRY_HOURS = 24;
 
 // Default links for checkout responses (required per UCP spec)
@@ -78,85 +69,19 @@ const VIPPS_POLL_INITIAL_DELAY_MS = 5000; // Start after 5 seconds
 const VIPPS_POLL_INTERVAL_MS = 2000; // Check every 2 seconds
 const VIPPS_POLL_MAX_ATTEMPTS = 150; // Max ~5 minutes of polling
 
-// ============================================
-// Vipps API Configuration
-// See: https://developer.vippsmobilepay.com/api/checkout/#tag/Session
-// ============================================
-
-// API URLs - use test environment by default
-const VIPPS_API_BASE_URL = Deno.env.get("VIPPS_API_BASE_URL") ??
-  "https://apitest.vipps.no";
-const VIPPS_CHECKOUT_URL = `${VIPPS_API_BASE_URL}/checkout/v3/session`;
-
-// API Credentials - MUST be configured in environment for production
-const VIPPS_CLIENT_ID = Deno.env.get("VIPPS_CLIENT_ID") ?? "";
-const VIPPS_CLIENT_SECRET = Deno.env.get("VIPPS_CLIENT_SECRET") ?? "";
-const VIPPS_SUBSCRIPTION_KEY = Deno.env.get("VIPPS_SUBSCRIPTION_KEY") ?? "";
-const VIPPS_MSN = Deno.env.get("VIPPS_MERCHANT_SERIAL_NUMBER") ?? "";
-
-// System identification headers (required by Vipps API)
-const VIPPS_SYSTEM_NAME = Deno.env.get("VIPPS_SYSTEM_NAME") ?? "UCP-POC";
-const VIPPS_SYSTEM_VERSION = Deno.env.get("VIPPS_SYSTEM_VERSION") ?? "1.0.0";
-const VIPPS_PLUGIN_NAME = Deno.env.get("VIPPS_PLUGIN_NAME") ?? "ucp-checkout";
-const VIPPS_PLUGIN_VERSION = Deno.env.get("VIPPS_PLUGIN_VERSION") ?? "1.0.0";
-
-// Vipps Merchant Configuration - should be loaded from environment in production
-const VIPPS_MERCHANT_CONFIG: VippsMerchantInfo = {
-  callbackUrl: Deno.env.get("VIPPS_CALLBACK_URL") ??
-    "https://example.com/api/vipps/callback",
-  returnUrl: Deno.env.get("VIPPS_RETURN_URL") ??
-    "https://example.com/checkout/complete",
-  callbackAuthorizationToken: Deno.env.get("VIPPS_CALLBACK_TOKEN"),
-  termsAndConditionsUrl: Deno.env.get("VIPPS_TERMS_URL") ??
-    "https://example.com/terms",
-};
-
-const VIPPS_EMBEDDED_CHECKOUT =
-  Deno.env.get("VIPPS_EMBEDDED_CHECKOUT") === "true";
-
-const VIPPS_CHECKOUT_CONFIG: VippsCheckoutConfiguration = {
-  elements: "Full",
-  customerInteraction: "CUSTOMER_PRESENT",
-  countries: {
-    supported: ["NO", "SE", "DK", "FI"],
-  },
-  showOrderSummary: true,
-};
-
 const TAX_RATE = 25; // Norwegian VAT 25%
-/** Result type for Vipps Checkout API calls */
-type VippsCheckoutResult =
-  | { success: true; data: CreateVippsCheckoutSessionResponse }
-  | { success: false; error: VippsCheckoutError; status: number };
 
-async function loadSessions(): Promise<CheckoutSession[]> {
-  try {
-    const data = await Deno.readTextFile(DATA_FILE);
-    const store: SessionsStore = JSON.parse(data);
-    return store.sessions;
-  } catch {
-    return [];
-  }
-}
-
-async function saveSessions(sessions: CheckoutSession[]): Promise<void> {
-  const store: SessionsStore = { sessions };
-  await Deno.writeTextFile(DATA_FILE, JSON.stringify(store, null, 2));
-}
-
-function generateSessionId(): string {
-  return `cs-${crypto.randomUUID()}`;
-}
-
-/**
- * Get a checkout session by ID.
- * Exported for use by other modules (e.g., shipping callback).
- */
-export async function getSessionById(
-  sessionId: string,
-): Promise<CheckoutSession | undefined> {
-  const sessions = await loadSessions();
-  return sessions.find((s) => s.id === sessionId);
+function jsonError(
+  status: number,
+  type: string,
+  code: string,
+  message: string,
+  param?: string,
+): Response {
+  return Response.json(
+    { error: { type, code, message, ...(param !== undefined && { param }) } },
+    { status },
+  );
 }
 
 export async function handleCreateCheckoutSession(
@@ -167,14 +92,15 @@ export async function handleCreateCheckoutSession(
   // Parse UCP headers from the request
   const ucpHeaders = parseUCPHeaders(req);
 
+  const platformUcpProfile = ucpProfile;
+
   // Log agent information if present
   let platformWebhookUrl: string | undefined;
   let platformProfileUrl: string | undefined;
 
   if (ucpHeaders.agent) {
     console.log(
-      `📱 Checkout request from agent: ${
-        ucpHeaders.agent.name ?? "unknown"
+      `📱 Checkout request from agent: ${ucpHeaders.agent.name ?? "unknown"
       } (${ucpHeaders.agent.profile})`,
     );
 
@@ -194,86 +120,49 @@ export async function handleCreateCheckoutSession(
   try {
     rawBody = await req.json();
   } catch {
-    const error: ErrorResponse = {
-      error: {
-        type: "invalid_request",
-        code: "invalid_json",
-        message: "Request body must be valid JSON",
-      },
-    };
-    return new Response(JSON.stringify(error), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonError(
+      400,
+      "invalid_request",
+      "invalid_json",
+      "Request body must be valid JSON",
+    );
   }
 
   const body = rawBody as CreateCheckoutSessionRequest;
 
   // Basic validation - line_items required
   if (!body.line_items?.length) {
-    const error: ErrorResponse = {
-      error: {
-        type: "invalid_request",
-        code: "missing_line_items",
-        message: "At least one line item is required",
-      },
-    };
-    return new Response(JSON.stringify(error), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonError(
+      400,
+      "invalid_request",
+      "missing_line_items",
+      "At least one line item is required",
+    );
   }
 
-  // Build line items with product details (UCP spec format)
+  // Build line items from request data (UCP spec format)
   let lineItems: LineItemResponse[] = [];
-  let currency = body.currency ?? "NOK"; // Default to NOK for Vipps
+  const currency = body.currency ?? "NOK";
 
   for (let idx = 0; idx < body.line_items.length; idx++) {
     const reqItem = body.line_items[idx];
-    const product = await getProductBySku(reqItem.sku);
 
-    if (!product) {
-      const error: ErrorResponse = {
-        error: {
-          type: "invalid_request",
-          code: "product_not_found",
-          message: `Product with SKU '${reqItem.sku}' not found`,
-          param: `$.line_items[].sku`,
-        },
-      };
-      return new Response(JSON.stringify(error), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+    if (!reqItem.title || reqItem.price == null) {
+      return jsonError(
+        400,
+        "invalid_request",
+        "missing_product_details",
+        `Line item at index ${idx} must include 'title' and 'price'`,
+        `$.line_items[${idx}]`,
+      );
     }
 
-    if (product.stock < reqItem.quantity) {
-      const error: ErrorResponse = {
-        error: {
-          type: "invalid_request",
-          code: "insufficient_stock",
-          message:
-            `Insufficient stock for '${product.name}'. Available: ${product.stock}, Requested: ${reqItem.quantity}`,
-          param: `$.line_items[].quantity`,
-        },
-      };
-      return new Response(JSON.stringify(error), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    // Use the product's currency (all products in an order should have the same currency)
-    currency = product.currency.toUpperCase();
-
-    // Build UCP-compliant line item
-    const itemSubtotal = product.price * reqItem.quantity;
+    const itemSubtotal = reqItem.price * reqItem.quantity;
     const item: Item = {
-      id: product.sku,
-      title: product.name,
-      price: product.price,
-      description: product.description,
-      image_url: product.image_url,
+      id: reqItem.sku,
+      title: reqItem.title,
+      price: reqItem.price,
+      image_url: reqItem.image_url,
     };
 
     lineItems.push({
@@ -322,6 +211,22 @@ export async function handleCreateCheckoutSession(
     now.getTime() + SESSION_EXPIRY_HOURS * 60 * 60 * 1000,
   );
 
+  // Map payment handlers to UCP spec format: { handler_name: [versions] }
+  const mapPaymentHandlers = (
+    handlers: Record<string, Array<{ version: string }>> | undefined,
+  ): Record<string, string[]> | undefined => {
+    if (!handlers) return undefined;
+    const mapped: Record<string, string[]> = {};
+    for (const [name, versions] of Object.entries(handlers)) {
+      mapped[name] = versions.map((v) => v.version);
+    }
+    return mapped;
+  };
+
+  const paymentHandlers = mapPaymentHandlers(
+    platformUcpProfile?.ucp.payment_handlers,
+  );
+
   // Create the UCP session object (spec-compliant format)
   const session: CheckoutSession = {
     ucp: getUCPResponseMetadata(),
@@ -338,7 +243,7 @@ export async function handleCreateCheckoutSession(
       methods: fulfillmentMethods,
       available_methods: availableMethods,
     },
-    ancillaries: Object.keys(ancillaries).length > 0 ? ancillaries : undefined,
+    payment: paymentHandlers ? { handlers: paymentHandlers } : undefined,
     created_at: now.toISOString(),
     updated_at: now.toISOString(),
     expires_at: expiresAt.toISOString(),
@@ -346,35 +251,8 @@ export async function handleCreateCheckoutSession(
     // Store platform webhook URL from UCP-Agent profile for order events
     platform_webhook_url: platformWebhookUrl,
     platform_profile_url: platformProfileUrl,
+    ancillaries: Object.keys(ancillaries).length > 0 ? ancillaries : undefined,
   };
-
-  // Create corresponding Vipps Checkout session
-  let continueUrl: string | undefined = undefined;
-  if (VIPPS_EMBEDDED_CHECKOUT) {
-    const vippsCheckoutRequest = mapUCPToVippsCheckoutRequest(session);
-    const vippsCheckoutResult = await createVippsCheckoutSession(
-      vippsCheckoutRequest,
-    );
-
-    if (!vippsCheckoutResult.success) {
-      const error: ErrorResponse = {
-        error: {
-          type: "processing_error",
-          code: "vipps_checkout_error",
-          message: vippsCheckoutResult.error.message,
-        },
-      };
-      return new Response(JSON.stringify(error), {
-        status:
-          vippsCheckoutResult.status >= 400 && vippsCheckoutResult.status < 500
-            ? 400
-            : 502,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    continueUrl =
-      `${vippsCheckoutResult.data.checkoutFrontendUrl}?token=${vippsCheckoutResult.data.token}&ec_version=${getUCPVersion()}`;
-  }
 
   // Save session
   const sessions = await loadSessions();
@@ -409,12 +287,8 @@ export async function handleCreateCheckoutSession(
     );
   }
 
-  // Return session along with Vipps checkout URL info
-  const response = continueUrl
-    ? { ...session, continue_url: continueUrl }
-    : session;
   return new Response(
-    JSON.stringify(response),
+    JSON.stringify(session),
     {
       status: 201,
       headers: responseHeaders,
@@ -431,18 +305,13 @@ export async function handleGetCheckoutSession(
   const session = sessions.find((s) => s.id === sessionId);
 
   if (!session) {
-    const error: ErrorResponse = {
-      error: {
-        type: "not_found",
-        code: "session_not_found",
-        message: `Checkout session '${sessionId}' not found`,
-        param: "id",
-      },
-    };
-    return new Response(JSON.stringify(error), {
-      status: 404,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonError(
+      404,
+      "not_found",
+      "session_not_found",
+      `Checkout session '${sessionId}' not found`,
+      "id",
+    );
   }
 
   // Check if session expired
@@ -518,17 +387,12 @@ export async function handleUpdateCheckoutSession(
   try {
     rawBody = await req.json();
   } catch {
-    const error: ErrorResponse = {
-      error: {
-        type: "invalid_request",
-        code: "invalid_json",
-        message: "Request body must be valid JSON",
-      },
-    };
-    return new Response(JSON.stringify(error), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonError(
+      400,
+      "invalid_request",
+      "invalid_json",
+      "Request body must be valid JSON",
+    );
   }
 
   const body = rawBody as UpdateCheckoutSessionRequest;
@@ -537,35 +401,25 @@ export async function handleUpdateCheckoutSession(
   const sessionIndex = sessions.findIndex((s) => s.id === sessionId);
 
   if (sessionIndex === -1) {
-    const error: ErrorResponse = {
-      error: {
-        type: "not_found",
-        code: "session_not_found",
-        message: `Checkout session '${sessionId}' not found`,
-        param: "id",
-      },
-    };
-    return new Response(JSON.stringify(error), {
-      status: 404,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonError(
+      404,
+      "not_found",
+      "session_not_found",
+      `Checkout session '${sessionId}' not found`,
+      "id",
+    );
   }
 
   const session = sessions[sessionIndex];
 
   // Check if session can be updated
   if (session.status === "completed" || session.status === "canceled") {
-    const error: ErrorResponse = {
-      error: {
-        type: "invalid_request",
-        code: "session_not_updatable",
-        message: `Cannot update session with status '${session.status}'`,
-      },
-    };
-    return new Response(JSON.stringify(error), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonError(
+      400,
+      "invalid_request",
+      "session_not_updatable",
+      `Cannot update session with status '${session.status}'`,
+    );
   }
 
   // Update buyer info if provided
@@ -635,7 +489,8 @@ export async function handleUpdateCheckoutSession(
       );
       session.messages = [...(session.messages ?? []), ...warningMessages];
       console.log(
-        `[UpdateCheckout] Ancillary processing warnings: ${ancillaryResult.errors.join(", ")}`,
+        `[UpdateCheckout] Ancillary processing warnings: ${ancillaryResult.errors.join(", ")
+        }`,
       );
     }
   }
@@ -834,35 +689,25 @@ export async function handleCancelCheckout(
   const sessionIndex = sessions.findIndex((s) => s.id === sessionId);
 
   if (sessionIndex === -1) {
-    const error: ErrorResponse = {
-      error: {
-        type: "not_found",
-        code: "session_not_found",
-        message: `Checkout session '${sessionId}' not found`,
-        param: "id",
-      },
-    };
-    return new Response(JSON.stringify(error), {
-      status: 404,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonError(
+      404,
+      "not_found",
+      "session_not_found",
+      `Checkout session '${sessionId}' not found`,
+      "id",
+    );
   }
 
   const session = sessions[sessionIndex];
 
   // Check if session can be canceled
   if (session.status === "completed") {
-    const error: ErrorResponse = {
-      error: {
-        type: "invalid_request",
-        code: "session_already_completed",
-        message: "Cannot cancel a completed checkout session",
-      },
-    };
-    return new Response(JSON.stringify(error), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonError(
+      400,
+      "invalid_request",
+      "session_already_completed",
+      "Cannot cancel a completed checkout session",
+    );
   }
 
   if (session.status === "canceled") {
@@ -937,34 +782,24 @@ export async function handleCompleteCheckout(
   try {
     rawBody = await req.json();
   } catch {
-    const error: ErrorResponse = {
-      error: {
-        type: "invalid_request",
-        code: "invalid_json",
-        message: "Request body must be valid JSON",
-      },
-    };
-    return new Response(JSON.stringify(error), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonError(
+      400,
+      "invalid_request",
+      "invalid_json",
+      "Request body must be valid JSON",
+    );
   }
 
   const body = rawBody as CompleteCheckoutRequest;
 
   // Basic validation - payment instruments required
   if (!body.payment?.instruments?.length) {
-    const error: ErrorResponse = {
-      error: {
-        type: "invalid_request",
-        code: "missing_payment",
-        message: "Payment with at least one instrument is required",
-      },
-    };
-    return new Response(JSON.stringify(error), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonError(
+      400,
+      "invalid_request",
+      "missing_payment",
+      "Payment with at least one instrument is required",
+    );
   }
 
   // Get the first wallet instrument
@@ -988,35 +823,25 @@ export async function handleCompleteCheckout(
   const sessionIndex = sessions.findIndex((s) => s.id === sessionId);
 
   if (sessionIndex === -1) {
-    const error: ErrorResponse = {
-      error: {
-        type: "not_found",
-        code: "session_not_found",
-        message: `Checkout session '${sessionId}' not found`,
-        param: "id",
-      },
-    };
-    return new Response(JSON.stringify(error), {
-      status: 404,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonError(
+      404,
+      "not_found",
+      "session_not_found",
+      `Checkout session '${sessionId}' not found`,
+      "id",
+    );
   }
 
   const session = sessions[sessionIndex];
 
   // Check session status
   if (session.status === "completed") {
-    const error: ErrorResponse = {
-      error: {
-        type: "invalid_request",
-        code: "session_already_completed",
-        message: "This checkout session has already been completed",
-      },
-    };
-    return new Response(JSON.stringify(error), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonError(
+      400,
+      "invalid_request",
+      "session_already_completed",
+      "This checkout session has already been completed",
+    );
   }
 
   if (
@@ -1028,17 +853,12 @@ export async function handleCompleteCheckout(
       await saveSessions(sessions);
     }
 
-    const error: ErrorResponse = {
-      error: {
-        type: "invalid_request",
-        code: "session_expired",
-        message: "This checkout session has expired",
-      },
-    };
-    return new Response(JSON.stringify(error), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonError(
+      400,
+      "invalid_request",
+      "session_expired",
+      "This checkout session has expired",
+    );
   }
 
   const customer = instrument.credential.type === "MSISDN"
@@ -1092,16 +912,6 @@ export async function handleCompleteCheckout(
   const paymentExpiresAt = new Date(now.getTime() + PAYMENT_TIMEOUT_MS);
 
   if (paymentResult.data.state === "AUTHORIZED") {
-    // Rare case: immediate authorization (e.g., test mode or pre-authorized)
-    // Update stock and complete
-    for (const item of session.line_items) {
-      const success = await updateStock(item.item.id, -item.quantity);
-      if (!success) {
-        console.error(`[Checkout] Stock update failed for ${item.item.id}`);
-        // In production, would need to handle this gracefully
-      }
-    }
-
     session.status = "completed";
     session.order = {
       id: `order-${session.id}`,
@@ -1118,6 +928,7 @@ export async function handleCompleteCheckout(
     // Return complete_in_progress immediately - don't block waiting for user
     session.status = "complete_in_progress";
     session.payment = {
+      ...session.payment,
       state: "pending_approval",
       vipps_reference: paymentResult.data.reference,
       expires_at: paymentExpiresAt.toISOString(),
@@ -1263,20 +1074,10 @@ export async function handleVippsCallback(req: Request): Promise<Response> {
 
   switch (callback.state) {
     case "AUTHORIZED": {
-      // Payment approved! Update stock and complete the order
       console.log(`[VippsCallback] Payment AUTHORIZED for ${session.id}`);
-
-      for (const item of session.line_items) {
-        const success = await updateStock(item.item.id, -item.quantity);
-        if (!success) {
-          console.error(
-            `[VippsCallback] Stock update failed for ${item.item.id}`,
-          );
-        }
-      }
-
       session.status = "completed";
       session.payment = {
+        ...session.payment,
         state: "approved",
         vipps_reference: callback.reference,
         psp_reference: callback.pspReference,
@@ -1496,16 +1297,9 @@ async function processPaymentAuthorized(
 
   const now = new Date();
 
-  // Update stock
-  for (const item of session.line_items) {
-    const success = await updateStock(item.item.id, -item.quantity);
-    if (!success) {
-      console.error(`[VippsPolling] Stock update failed for ${item.item.id}`);
-    }
-  }
-
   session.status = "completed";
   session.payment = {
+    ...session.payment,
     state: "approved",
     vipps_reference: vippsReference,
     psp_reference: pspReference,
@@ -1557,262 +1351,4 @@ async function processPaymentFailed(
 
   await saveSessions(sessions);
   clearAccessToken(sessionId);
-}
-
-/**
- * Creates a Vipps Checkout session via the Vipps API.
- *
- * Implements: POST /checkout/v3/session
- * See: https://developer.vippsmobilepay.com/api/checkout/#tag/Session/paths/~1checkout~1v3~1session/post
- *
- * Required headers:
- * - Vipps-System-Name, Vipps-System-Version, Vipps-System-Plugin-Name, Vipps-System-Plugin-Version
- * - client_id, client_secret
- * - Ocp-Apim-Subscription-Key
- * - Merchant-Serial-Number
- * - Idempotency-Key (optional but recommended)
- */
-async function createVippsCheckoutSession(
-  vippsCheckoutRequest: CreateVippsCheckoutSessionRequest,
-  idempotencyKey?: string,
-): Promise<VippsCheckoutResult> {
-  // Validate that required credentials are configured
-  if (
-    !VIPPS_CLIENT_ID || !VIPPS_CLIENT_SECRET || !VIPPS_SUBSCRIPTION_KEY ||
-    !VIPPS_MSN
-  ) {
-    console.error("Vipps API credentials not configured");
-    return {
-      success: false,
-      status: 500,
-      error: {
-        type: "configuration_error",
-        code: "missing_credentials",
-        message:
-          "Vipps API credentials are not configured. Set VIPPS_CLIENT_ID, VIPPS_CLIENT_SECRET, VIPPS_SUBSCRIPTION_KEY, and VIPPS_MERCHANT_SERIAL_NUMBER environment variables.",
-      },
-    };
-  }
-
-  // Generate idempotency key if not provided
-  const requestIdempotencyKey = idempotencyKey ?? crypto.randomUUID();
-
-  try {
-    const response = await fetch(VIPPS_CHECKOUT_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        // System identification headers (required)
-        "Vipps-System-Name": VIPPS_SYSTEM_NAME,
-        "Vipps-System-Version": VIPPS_SYSTEM_VERSION,
-        "Vipps-System-Plugin-Name": VIPPS_PLUGIN_NAME,
-        "Vipps-System-Plugin-Version": VIPPS_PLUGIN_VERSION,
-        // Authentication headers (required)
-        "client_id": VIPPS_CLIENT_ID,
-        "client_secret": VIPPS_CLIENT_SECRET,
-        "Ocp-Apim-Subscription-Key": VIPPS_SUBSCRIPTION_KEY,
-        "Merchant-Serial-Number": VIPPS_MSN,
-        // Idempotency key (recommended)
-        "Idempotency-Key": requestIdempotencyKey,
-      },
-      body: JSON.stringify(vippsCheckoutRequest),
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.json().catch(
-        () => ({}),
-      ) as VippsCheckoutError;
-      console.error(`Vipps API error: ${response.status}`, errorBody);
-
-      return {
-        success: false,
-        status: response.status,
-        error: {
-          type: errorBody.type ?? "api_error",
-          code: errorBody.code ?? `http_${response.status}`,
-          message: errorBody.message ??
-            `Vipps API returned status ${response.status}`,
-          contextId: errorBody.contextId,
-          extraDetails: errorBody.extraDetails,
-        },
-      };
-    }
-
-    const data = await response.json() as CreateVippsCheckoutSessionResponse;
-    return { success: true, data };
-  } catch (error) {
-    console.error("Error calling Vipps Checkout API:", error);
-    return {
-      success: false,
-      status: 500,
-      error: {
-        type: "network_error",
-        code: "request_failed",
-        message: error instanceof Error
-          ? error.message
-          : "Failed to connect to Vipps API",
-      },
-    };
-  }
-}
-
-// ============================================
-// UCP to Vipps Checkout Mapping
-// ============================================
-
-/**
- * Maps a UCP LineItemResponse to a Vipps OrderLine
- */
-function mapLineItemToVippsOrderLine(
-  lineItem: LineItemResponse,
-): VippsOrderLine {
-  const totalEntry = lineItem.totals.find((t) => t.type === "total");
-  const totalAmount = totalEntry?.amount ?? 0;
-  const taxAmount = Math.round(totalAmount * (TAX_RATE / (100 + TAX_RATE)));
-  const amountExcludingTax = totalAmount - taxAmount;
-
-  return {
-    name: lineItem.item.title,
-    id: lineItem.item.id,
-    totalAmount: totalAmount,
-    totalAmountExcludingTax: amountExcludingTax,
-    totalTaxAmount: taxAmount,
-    taxPercentage: TAX_RATE,
-    taxRate: TAX_RATE * 100, // Vipps uses basis points (2500 = 25%)
-    unitInfo: {
-      unitPrice: lineItem.item.price,
-      quantity: lineItem.quantity.toString(),
-      quantityUnit: "PCS",
-    },
-    discount: 0,
-  };
-}
-
-/**
- * Maps UCP CheckoutSession to Vipps OrderSummary
- */
-function mapToVippsOrderSummary(session: CheckoutSession): VippsOrderSummary {
-  const orderLines = session.line_items.map(mapLineItemToVippsOrderLine);
-
-  // Add shipping as an order line if applicable
-  const shippingEntry = session.totals.find((t) => t.type === "shipping");
-  if (shippingEntry && shippingEntry.amount > 0) {
-    const shippingTax = Math.round(
-      shippingEntry.amount * (TAX_RATE / (100 + TAX_RATE)),
-    );
-    orderLines.push({
-      name: "Shipping",
-      id: "SHIPPING",
-      totalAmount: shippingEntry.amount,
-      totalAmountExcludingTax: shippingEntry.amount - shippingTax,
-      totalTaxAmount: shippingTax,
-      taxPercentage: TAX_RATE,
-      taxRate: TAX_RATE * 100,
-      isShipping: true,
-    });
-  }
-
-  return {
-    orderLines,
-    orderBottomLine: {
-      currency: session.currency.toUpperCase(),
-    },
-  };
-}
-
-/**
- * Default prefill customer data for demo/testing
- */
-const DEFAULT_PREFILL_CUSTOMER: VippsPrefillCustomer = {
-  firstName: "Ola",
-  lastName: "Nordmann",
-  email: "ola.nordmann@example.com",
-  phoneNumber: "4712345678",
-  streetAddress: "Osloveien 1",
-  postalCode: "0154",
-  city: "Oslo",
-  country: "NO",
-};
-
-/**
- * Maps UCP Buyer to Vipps PrefillCustomer
- */
-function mapBuyerToVippsPrefillCustomer(
-  session: CheckoutSession,
-): VippsPrefillCustomer | undefined {
-  const { buyer, shipping_address } = session;
-
-  // Use default prefill data if no buyer or shipping address provided
-  if (!buyer && !shipping_address) {
-    return DEFAULT_PREFILL_CUSTOMER;
-  }
-
-  // Split name into first/last name if available
-  let firstName: string | undefined;
-  let lastName: string | undefined;
-
-  if (buyer?.name) {
-    const nameParts = buyer.name.trim().split(/\s+/);
-    firstName = nameParts[0];
-    lastName = nameParts.slice(1).join(" ") || undefined;
-  } else if (shipping_address?.name) {
-    const nameParts = shipping_address.name.trim().split(/\s+/);
-    firstName = nameParts[0];
-    lastName = nameParts.slice(1).join(" ") || undefined;
-  }
-
-  return {
-    firstName: firstName ?? DEFAULT_PREFILL_CUSTOMER.firstName,
-    lastName: lastName ?? DEFAULT_PREFILL_CUSTOMER.lastName,
-    email: buyer?.email ?? DEFAULT_PREFILL_CUSTOMER.email,
-    phoneNumber: buyer?.phone ?? DEFAULT_PREFILL_CUSTOMER.phoneNumber,
-    streetAddress: shipping_address?.line_one ??
-      DEFAULT_PREFILL_CUSTOMER.streetAddress,
-    postalCode: shipping_address?.postal_code ??
-      DEFAULT_PREFILL_CUSTOMER.postalCode,
-    city: shipping_address?.city ?? DEFAULT_PREFILL_CUSTOMER.city,
-    country: shipping_address?.country ?? DEFAULT_PREFILL_CUSTOMER.country,
-  };
-}
-
-/**
- * Maps UCP CheckoutSession to Vipps Transaction
- */
-function mapToVippsTransaction(
-  session: CheckoutSession,
-): VippsTransactionRequest {
-  const totalEntry = session.totals.find((t) => t.type === "total");
-  return {
-    amount: {
-      value: totalEntry?.amount ?? 0,
-      currency: session.currency.toUpperCase(),
-    },
-    reference: session.id,
-    paymentDescription: `Order ${session.id}`,
-    orderSummary: mapToVippsOrderSummary(session),
-  };
-}
-
-/**
- * Maps a UCP CheckoutSession to a Vipps CreateCheckoutSessionRequest
- */
-export function mapUCPToVippsCheckoutRequest(
-  session: CheckoutSession,
-  merchantInfo?: Partial<VippsMerchantInfo>,
-  configuration?: Partial<VippsCheckoutConfiguration>,
-): CreateVippsCheckoutSessionRequest {
-  return {
-    type: "PAYMENT",
-    reference: session.id,
-    transaction: mapToVippsTransaction(session),
-    prefillCustomer: mapBuyerToVippsPrefillCustomer(session),
-    merchantInfo: {
-      ...VIPPS_MERCHANT_CONFIG,
-      ...merchantInfo,
-    },
-    configuration: {
-      ...VIPPS_CHECKOUT_CONFIG,
-      ...configuration,
-    },
-  };
 }

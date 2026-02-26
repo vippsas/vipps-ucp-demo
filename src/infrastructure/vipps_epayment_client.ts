@@ -34,26 +34,19 @@ import type {
   VippsEPaymentTokenCustomer,
 } from "../types/vipps/epayment.ts";
 
+import { getConfig } from "./config.ts";
+
 // ============================================
 // Configuration
 // ============================================
 
-const VIPPS_API_BASE_URL = Deno.env.get("VIPPS_API_BASE_URL") ??
-  "https://apitest.vipps.no";
-const VIPPS_ACCESS_TOKEN_URL = `${VIPPS_API_BASE_URL}/accesstoken/get`;
-const VIPPS_EPAYMENT_URL = `${VIPPS_API_BASE_URL}/epayment/v1/payments`;
-
-// Credentials
-const VIPPS_CLIENT_ID = Deno.env.get("VIPPS_CLIENT_ID") ?? "";
-const VIPPS_CLIENT_SECRET = Deno.env.get("VIPPS_CLIENT_SECRET") ?? "";
-const VIPPS_SUBSCRIPTION_KEY = Deno.env.get("VIPPS_SUBSCRIPTION_KEY") ?? "";
-const VIPPS_MSN = Deno.env.get("VIPPS_MERCHANT_SERIAL_NUMBER") ?? "";
-
-// System identification headers
-const VIPPS_SYSTEM_NAME = Deno.env.get("VIPPS_SYSTEM_NAME") ?? "UCP-POC";
-const VIPPS_SYSTEM_VERSION = Deno.env.get("VIPPS_SYSTEM_VERSION") ?? "1.0.0";
-const VIPPS_PLUGIN_NAME = Deno.env.get("VIPPS_PLUGIN_NAME") ?? "ucp-checkout";
-const VIPPS_PLUGIN_VERSION = Deno.env.get("VIPPS_PLUGIN_VERSION") ?? "1.0.0";
+const vipps = () => getConfig();
+const VIPPS_ACCESS_TOKEN_URL = () => `${vipps().apiBaseUrl}/accesstoken/get`;
+const VIPPS_EPAYMENT_URL = () => `${vipps().apiBaseUrl}/epayment/v1/payments`;
+const VIPPS_SYSTEM_NAME = "UCP-POC";
+const VIPPS_SYSTEM_VERSION = "1.0.0";
+const VIPPS_PLUGIN_NAME = "ucp-checkout";
+const VIPPS_PLUGIN_VERSION = "0.0.1";
 
 // ============================================
 // Access Token Management
@@ -80,26 +73,17 @@ async function fetchAccessToken(): Promise<
     error: VippsAccessTokenError;
   }
 > {
-  if (!VIPPS_CLIENT_ID || !VIPPS_CLIENT_SECRET || !VIPPS_SUBSCRIPTION_KEY) {
-    return {
-      success: false,
-      error: {
-        error: "configuration_error",
-        error_description:
-          "Missing Vipps credentials. Set VIPPS_CLIENT_ID, VIPPS_CLIENT_SECRET, and VIPPS_SUBSCRIPTION_KEY.",
-      },
-    };
-  }
+  const cfg = vipps();
 
   try {
-    const response = await fetch(VIPPS_ACCESS_TOKEN_URL, {
+    const response = await fetch(VIPPS_ACCESS_TOKEN_URL(), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "client_id": VIPPS_CLIENT_ID,
-        "client_secret": VIPPS_CLIENT_SECRET,
-        "Ocp-Apim-Subscription-Key": VIPPS_SUBSCRIPTION_KEY,
-        "Merchant-Serial-Number": VIPPS_MSN,
+        "client_id": cfg.clientId,
+        "client_secret": cfg.clientSecret,
+        "Ocp-Apim-Subscription-Key": cfg.subscriptionKey,
+        "Merchant-Serial-Number": cfg.msn,
       },
     });
 
@@ -264,26 +248,7 @@ export async function createPayment(
     };
   }
 
-  // Validate MSN is configured
-  if (!VIPPS_MSN) {
-    // Log detailed error server-side, return opaque message to platform
-    console.error(
-      `[VippsEPayment] MSN not configured for checkout ${checkoutId}`,
-    );
-    return {
-      success: false,
-      httpStatus: 500,
-      messages: [
-        {
-          type: "error",
-          code: "payment_service_error",
-          severity: "recoverable",
-          content:
-            "Payment service is temporarily unavailable. Please try again.",
-        },
-      ],
-    };
-  }
+  const cfg = vipps();
 
   // Build receipt with order lines if line items provided
   let receipt: VippsEPaymentReceipt | undefined;
@@ -307,15 +272,14 @@ export async function createPayment(
       `[VippsEPayment] Creating payment for ${checkoutId}`,
     );
 
-    const response = await fetch(VIPPS_EPAYMENT_URL, {
+    const response = await fetch(VIPPS_EPAYMENT_URL(), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${tokenResult.token}`,
-        "Ocp-Apim-Subscription-Key": VIPPS_SUBSCRIPTION_KEY,
-        "Merchant-Serial-Number": VIPPS_MSN,
+        "Ocp-Apim-Subscription-Key": cfg.subscriptionKey,
+        "Merchant-Serial-Number": cfg.msn,
         "Idempotency-Key": checkoutId,
-        // System identification headers
         "Vipps-System-Name": VIPPS_SYSTEM_NAME,
         "Vipps-System-Version": VIPPS_SYSTEM_VERSION,
         "Vipps-System-Plugin-Name": VIPPS_PLUGIN_NAME,
@@ -398,12 +362,13 @@ export async function getPaymentStatus(
   }
 
   try {
-    const response = await fetch(`${VIPPS_EPAYMENT_URL}/${reference}`, {
+    const cfg = vipps();
+    const response = await fetch(`${VIPPS_EPAYMENT_URL()}/${reference}`, {
       method: "GET",
       headers: {
         "Authorization": `Bearer ${tokenResult.token}`,
-        "Ocp-Apim-Subscription-Key": VIPPS_SUBSCRIPTION_KEY,
-        "Merchant-Serial-Number": VIPPS_MSN,
+        "Ocp-Apim-Subscription-Key": cfg.subscriptionKey,
+        "Merchant-Serial-Number": cfg.msn,
         "Vipps-System-Name": VIPPS_SYSTEM_NAME,
         "Vipps-System-Version": VIPPS_SYSTEM_VERSION,
         "Vipps-System-Plugin-Name": VIPPS_PLUGIN_NAME,

@@ -1,188 +1,64 @@
 /**
  * UCP Signing Keys for webhook signature generation.
  *
- * Loads keys from environment variables:
- * - UCP_SIGNING_KEY_ID: Key identifier
- * - UCP_SIGNING_PRIVATE_KEY: Private key in JWK JSON format
- * - UCP_SIGNING_PUBLIC_KEY: Public key in JWK JSON format
+ * Generates an ECDSA P-256 key pair at startup for signing webhooks.
+ * Payloads are canonicalized with JCS (RFC 8785) before signing per the
+ * UCP AP2 Mandates specification.
  *
  * @module
  */
 
-import { importJWK, type JWK, SignJWT } from "@panva/jose";
+import { encodeBase64Url } from "@std/encoding/base64url";
+import { canonicalizeToBytes } from "@std/json/unstable-canonicalize";
+import type { JsonValue } from "@std/json/types";
 
-// Runtime state
-let privateKey: CryptoKey | null = null;
-let keyId: string = "";
-let publicKeyJwk: JWK | null = null;
+let privateKey: CryptoKey;
+let keyId: string;
 
-/**
- * Initialize the signing keys from environment variables.
- * Call this at application startup.
- *
- * Required env vars:
- * - UCP_SIGNING_KEY_ID
- * - UCP_SIGNING_PRIVATE_KEY (JWK JSON)
- * - UCP_SIGNING_PUBLIC_KEY (JWK JSON)
- */
+const KEY_ID = "dev-signing-key-1";
+
 export async function initSigningKeys(): Promise<void> {
-  const envKeyId = Deno.env.get("UCP_SIGNING_KEY_ID");
-  const envPrivateKey = Deno.env.get("UCP_SIGNING_PRIVATE_KEY");
-  const envPublicKey = Deno.env.get("UCP_SIGNING_PUBLIC_KEY");
+  const keyPair = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
 
-  if (!envKeyId || !envPrivateKey || !envPublicKey) {
-    const missing = [];
-    if (!envKeyId) missing.push("UCP_SIGNING_KEY_ID");
-    if (!envPrivateKey) missing.push("UCP_SIGNING_PRIVATE_KEY");
-    if (!envPublicKey) missing.push("UCP_SIGNING_PUBLIC_KEY");
+  privateKey = keyPair.privateKey;
+  keyId = KEY_ID;
 
-    throw new Error(
-      `Missing required signing key environment variables: ${
-        missing.join(", ")
-      }. ` +
-        `Copy .env_example to .env and configure the signing keys.`,
-    );
-  }
-
-  try {
-    const privateJwk = JSON.parse(envPrivateKey) as JWK;
-    const publicJwk = JSON.parse(envPublicKey) as JWK;
-
-    // Add standard JWK fields
-    privateJwk.kid = envKeyId;
-    privateJwk.alg = "ES256";
-    privateJwk.use = "sig";
-
-    publicJwk.kid = envKeyId;
-    publicJwk.alg = "ES256";
-    publicJwk.use = "sig";
-
-    keyId = envKeyId;
-    publicKeyJwk = publicJwk;
-    privateKey = (await importJWK(privateJwk, "ES256")) as CryptoKey;
-
-    console.log(`✅ Signing keys initialized (kid: ${keyId})`);
-  } catch (error) {
-    throw new Error(
-      `Failed to parse signing keys from environment: ${
-        error instanceof Error ? error.message : error
-      }`,
-    );
-  }
+  console.log(`Signing keys initialized (kid: ${keyId})`);
 }
 
-/**
- * Get the key ID for the current signing key.
- */
 export function getSigningKeyId(): string {
-  if (!keyId) {
-    throw new Error(
-      "Signing keys not initialized. Call initSigningKeys() first.",
-    );
-  }
   return keyId;
 }
 
 /**
- * Get the public key JWK for inclusion in the UCP profile.
- */
-export function getPublicKeyJwk(): JWK {
-  if (!publicKeyJwk) {
-    throw new Error(
-      "Signing keys not initialized. Call initSigningKeys() first.",
-    );
-  }
-  return publicKeyJwk;
-}
-
-/**
- * Get all signing keys for the UCP profile.
- * Returns an array to support key rotation.
- */
-export function getSigningKeys(): JWK[] {
-  if (!publicKeyJwk) {
-    throw new Error(
-      "Signing keys not initialized. Call initSigningKeys() first.",
-    );
-  }
-  return [publicKeyJwk];
-}
-
-/**
- * Create a detached JWT signature for a request body (RFC 7797).
+ * Create a detached JWS signature (RFC 7515 Appendix F) over a
+ * JCS-canonicalized (RFC 8785) payload.
  *
- * The signature format is: header..signature (empty payload section)
- * The actual payload is the request body, which the receiver will use for verification.
- *
- * @param body - The request body to sign
- * @returns The detached JWT signature for the Request-Signature header
+ * Returns `header..signature` (empty payload section).
+ * The receiver reconstructs the signing input by canonicalizing the
+ * request body themselves.
  */
-export async function createDetachedSignature(body: string): Promise<string> {
-  if (!privateKey) {
-    throw new Error(
-      "Signing keys not initialized. Call initSigningKeys() first.",
-    );
-  }
+export async function createDetachedSignature(
+  payload: JsonValue,
+): Promise<string> {
+  const canonicalBytes = canonicalizeToBytes(payload);
 
   const encoder = new TextEncoder();
-
-  // Create the header
-  const header = {
-    alg: "ES256",
-    kid: keyId,
-  };
-  const headerB64 = base64urlEncode(encoder.encode(JSON.stringify(header)));
-
-  // Create the payload (base64url encoded body)
-  const payloadB64 = base64urlEncode(encoder.encode(body));
-
-  // Create the signing input: header.payload
+  const header = { alg: "ES256", kid: keyId };
+  const headerB64 = encodeBase64Url(encoder.encode(JSON.stringify(header)));
+  const payloadB64 = encodeBase64Url(canonicalBytes);
   const signingInput = `${headerB64}.${payloadB64}`;
 
-  // Sign using Web Crypto API
   const signature = await crypto.subtle.sign(
     { name: "ECDSA", hash: "SHA-256" },
     privateKey,
     encoder.encode(signingInput),
   );
 
-  // Convert signature to base64url
-  const signatureB64 = base64urlEncode(new Uint8Array(signature));
-
-  // Return detached JWT: header..signature (empty payload section)
+  const signatureB64 = encodeBase64Url(new Uint8Array(signature));
   return `${headerB64}..${signatureB64}`;
-}
-
-/**
- * Create a standard (non-detached) JWT signature.
- *
- * @param payload - The payload to include in the JWT
- * @returns The complete JWT
- */
-export async function createSignature(
-  payload: Record<string, unknown>,
-): Promise<string> {
-  if (!privateKey) {
-    throw new Error(
-      "Signing keys not initialized. Call initSigningKeys() first.",
-    );
-  }
-
-  const jwt = await new SignJWT(payload)
-    .setProtectedHeader({
-      alg: "ES256",
-      kid: keyId,
-    })
-    .setIssuedAt()
-    .sign(privateKey);
-
-  return jwt;
-}
-
-/**
- * Base64url encode bytes (no padding).
- */
-function base64urlEncode(bytes: Uint8Array): string {
-  const base64 = btoa(String.fromCharCode(...bytes));
-  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }

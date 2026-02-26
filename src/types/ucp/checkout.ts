@@ -4,6 +4,7 @@ import type {
   FulfillmentResponse,
   FulfillmentUpdateRequest,
 } from "./fulfillment.ts";
+import type { AncillariesRequest, AncillariesResponse } from "./ancillaries.ts";
 
 export interface TotalEntry {
   type: "subtotal" | "tax" | "shipping" | "discount" | "total";
@@ -98,7 +99,8 @@ export interface PaymentHandler {
  * populated once a complete request has been initiated.
  */
 export interface CheckoutPaymentInfo {
-  handlers: PaymentHandler[];
+  /** Payment handlers available, keyed by handler name with list of supported versions */
+  handlers?: Record<string, string[]>;
   state?: PaymentState;
   vipps_reference?: string;
   expires_at?: string; // RFC 3339
@@ -178,7 +180,8 @@ export interface CheckoutSession {
   shipping_address?: Address;
   billing_address?: Address;
   fulfillment?: FulfillmentResponse;
-  payment: CheckoutPaymentInfo;
+  ancillaries?: AncillariesResponse;
+  payment?: CheckoutPaymentInfo;
   messages?: UCPMessage[];
   order?: Order;
   expires_at?: string; // RFC 3339
@@ -208,6 +211,7 @@ export interface CreateCheckoutSessionRequest {
   buyer?: Buyer;
   shipping_address?: Address;
   billing_address?: Address;
+  ancillaries?: AncillariesRequest;
   metadata?: Record<string, string>;
 }
 
@@ -216,4 +220,5 @@ export interface UpdateCheckoutSessionRequest {
   shipping_address?: Address;
   billing_address?: Address;
   fulfillment?: FulfillmentUpdateRequest;
+  ancillaries?: AncillariesRequest;
 }

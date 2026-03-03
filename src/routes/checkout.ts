@@ -98,7 +98,8 @@ export async function handleCreateCheckoutSession(
 
   if (ucpHeaders.agent) {
     console.log(
-      `📱 Checkout request from agent: ${ucpHeaders.agent.name ?? "unknown"
+      `📱 Checkout request from agent: ${
+        ucpHeaders.agent.name ?? "unknown"
       } (${ucpHeaders.agent.profile})`,
     );
 
@@ -472,7 +473,8 @@ export async function handleUpdateCheckoutSession(
       );
       session.messages = [...(session.messages ?? []), ...warningMessages];
       console.log(
-        `[UpdateCheckout] Ancillary processing warnings: ${ancillaryResult.errors.join(", ")
+        `[UpdateCheckout] Ancillary processing warnings: ${
+          ancillaryResult.errors.join(", ")
         }`,
       );
     }

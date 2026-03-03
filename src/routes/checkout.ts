@@ -489,7 +489,7 @@ export async function handleUpdateCheckoutSession(
   const fulfillmentCost = session.fulfillment?.methods
     ? getSelectedFulfillmentCost(session.fulfillment.methods)
     : 0;
-  const total = subtotal + tax + fulfillmentCost;
+  const total = subtotal + fulfillmentCost;
 
   console.log(
     `[UpdateCheckout] Recalculated: subtotal=${subtotal}, tax=${tax}, fulfillment=${fulfillmentCost}, total=${total}`,

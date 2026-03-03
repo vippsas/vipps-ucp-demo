@@ -98,8 +98,7 @@ export async function handleCreateCheckoutSession(
 
   if (ucpHeaders.agent) {
     console.log(
-      `📱 Checkout request from agent: ${
-        ucpHeaders.agent.name ?? "unknown"
+      `📱 Checkout request from agent: ${ucpHeaders.agent.name ?? "unknown"
       } (${ucpHeaders.agent.profile})`,
     );
 
@@ -473,8 +472,7 @@ export async function handleUpdateCheckoutSession(
       );
       session.messages = [...(session.messages ?? []), ...warningMessages];
       console.log(
-        `[UpdateCheckout] Ancillary processing warnings: ${
-          ancillaryResult.errors.join(", ")
+        `[UpdateCheckout] Ancillary processing warnings: ${ancillaryResult.errors.join(", ")
         }`,
       );
     }
@@ -489,7 +487,7 @@ export async function handleUpdateCheckoutSession(
   const fulfillmentCost = session.fulfillment?.methods
     ? getSelectedFulfillmentCost(session.fulfillment.methods)
     : 0;
-  const total = subtotal + tax + fulfillmentCost;
+  const total = subtotal + fulfillmentCost;
 
   console.log(
     `[UpdateCheckout] Recalculated: subtotal=${subtotal}, tax=${tax}, fulfillment=${fulfillmentCost}, total=${total}`,

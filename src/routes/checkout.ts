@@ -775,6 +775,7 @@ export async function handleCompleteCheckout(
   }
 
   const body = rawBody as CompleteCheckoutRequest;
+  console.log("[CompleteCheckout] Payload:", JSON.stringify(body, null, 2));
 
   // Basic validation - payment instruments required
   if (!body.payment?.instruments?.length) {

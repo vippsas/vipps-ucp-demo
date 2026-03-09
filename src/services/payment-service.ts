@@ -402,8 +402,8 @@ export async function processPaymentAuthorized(
 export async function processPaymentFailed(
   sessionId: string,
   paymentState: PaymentState,
-  errorCode: string,
-  errorMessage: string,
+  _errorCode: string,
+  _errorMessage: string,
 ): Promise<void> {
   const sessions = await loadSessions();
   const session = sessions.find((s) => s.id === sessionId);

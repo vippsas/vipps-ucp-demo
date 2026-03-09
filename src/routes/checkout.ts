@@ -1295,8 +1295,8 @@ async function processPaymentAuthorized(
 async function processPaymentFailed(
   sessionId: string,
   paymentState: "rejected" | "expired" | "cancelled",
-  errorCode: string,
-  errorMessage: string,
+  _errorCode: string,
+  _errorMessage: string,
 ): Promise<void> {
   const sessions = await loadSessions();
   const session = sessions.find((s) => s.id === sessionId);

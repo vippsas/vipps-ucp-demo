@@ -15,11 +15,12 @@ import type {
   CheckoutSession,
   PaymentState,
   UCPMessage,
-  VippsEPaymentAmount,
-  WalletPaymentInstrument,
-} from "../types.ts";
+} from "../types/ucp/checkout.ts";
+import { WalletPaymentInstrument } from "../types/ucp/payment.ts";
+import { VippsEPaymentAmount } from "../types/vipps/epayment.ts";
 import { updateStock } from "../routes/products.ts";
 import { loadSessions, saveSessions, TAX_RATE } from "./checkout-service.ts";
+import { TotalEntry } from "../types/ucp/checkout.ts";
 
 // ============================================
 // Configuration
@@ -160,10 +161,10 @@ export async function processPayment(
   const currency = session.currency
     .toUpperCase() as VippsEPaymentAmount["currency"];
 
-  const totalEntry = session.totals.find((t) => t.type === "total");
+  const totalEntry = session.totals.find((t: TotalEntry) => t.type === "total");
   const paymentResult = await createPayment(
     session.id,
-    msisdn,
+    { phoneNumber: msisdn },
     totalEntry?.amount ?? 0,
     currency,
     `Order ${session.id}`,

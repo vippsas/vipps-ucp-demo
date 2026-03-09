@@ -50,7 +50,8 @@ export async function handleShippingCallback(
     );
   }
 
-  const trackingNumber = body.tracking_number ?? `PKG${Date.now()}`;
+  const trackingNumber = body.tracking_number ??
+    `PKG${Temporal.Now.instant().epochMilliseconds}`;
   const trackingUrl = body.tracking_url ??
     `https://tracking.postnord.com/${trackingNumber}`;
   const carrier = body.carrier ?? "PostNord";

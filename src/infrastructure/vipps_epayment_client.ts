@@ -135,7 +135,7 @@ export async function getAccessToken(
   { success: true; token: string } | { success: false; error: string }
 > {
   const cached = tokenCache.get(checkoutId);
-  const now = Date.now();
+  const now = Temporal.Now.instant().epochMilliseconds;
 
   // Return cached token if still valid (with buffer)
   if (cached && cached.expiresAt - TOKEN_EXPIRY_BUFFER_MS > now) {

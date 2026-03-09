@@ -58,7 +58,7 @@ export async function fetchPlatformProfile(
   profileUrl: string,
 ): Promise<PlatformProfile | null> {
   const cached = profileCache.get(profileUrl);
-  if (cached && cached.expiresAt > Date.now()) {
+  if (cached && cached.expiresAt > Temporal.Now.instant().epochMilliseconds) {
     return cached.profile;
   }
 
@@ -81,7 +81,7 @@ export async function fetchPlatformProfile(
 
     profileCache.set(profileUrl, {
       profile,
-      expiresAt: Date.now() + ttl,
+      expiresAt: Temporal.Now.instant().epochMilliseconds + ttl,
     });
 
     logger.info(`Profile fetched and cached (ttl: ${ttl / 1000}s)`);

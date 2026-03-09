@@ -194,8 +194,10 @@ export async function processPayment(
     };
   }
 
-  const now = new Date();
-  const paymentExpiresAt = new Date(now.getTime() + PAYMENT_TIMEOUT_MS);
+  const now = Temporal.Now.instant();
+  const paymentExpiresAt = now.add(
+    Temporal.Duration.from({ milliseconds: PAYMENT_TIMEOUT_MS }),
+  );
 
   if (paymentResult.data.state === "AUTHORIZED") {
     // Rare case: immediate authorization
@@ -204,8 +206,10 @@ export async function processPayment(
     session.status = "completed";
     session.order = {
       id: `order-${session.id}`,
-      reference: `ORD-${now.getFullYear()}-${session.id.slice(-6)}`,
-      created_at: now.toISOString(),
+      reference: `ORD-${now.toZonedDateTimeISO("UTC").year}-${
+        session.id.slice(-6)
+      }`,
+      created_at: now.toString(),
     };
     session.messages = [{
       type: "info",
@@ -218,7 +222,7 @@ export async function processPayment(
     session.payment = {
       state: "pending_approval",
       vipps_reference: paymentResult.data.reference,
-      expires_at: paymentExpiresAt.toISOString(),
+      expires_at: paymentExpiresAt.toString(),
     };
     session.messages = [{
       type: "info",
@@ -228,7 +232,7 @@ export async function processPayment(
     }];
   }
 
-  session.updated_at = now.toISOString();
+  session.updated_at = now.toString();
   session.metadata = {
     ...session.metadata,
     vipps_reference: paymentResult.data.reference,
@@ -369,7 +373,7 @@ export async function processPaymentAuthorized(
     return; // Already processed
   }
 
-  const now = new Date();
+  const now = Temporal.Now.instant();
 
   // Update stock
   await updateStockForSession(session);
@@ -382,15 +386,17 @@ export async function processPaymentAuthorized(
   };
   session.order = {
     id: `order-${session.id}`,
-    reference: `ORD-${now.getFullYear()}-${session.id.slice(-6)}`,
-    created_at: now.toISOString(),
+    reference: `ORD-${now.toZonedDateTimeISO("UTC").year}-${
+      session.id.slice(-6)
+    }`,
+    created_at: now.toString(),
   };
   session.messages = [{
     type: "info",
     code: "payment_approved",
     content: "Payment approved. Your order has been placed.",
   }];
-  session.updated_at = now.toISOString();
+  session.updated_at = now.toString();
 
   await saveSessions(sessions);
   clearAccessToken(sessionId);
@@ -419,7 +425,7 @@ export async function processPaymentFailed(
     state: paymentState,
   };
   session.messages = [];
-  session.updated_at = new Date().toISOString();
+  session.updated_at = Temporal.Now.instant().toString();
 
   await saveSessions(sessions);
   clearAccessToken(sessionId);
@@ -469,7 +475,7 @@ export async function processVippsCallback(
     return { status: "already_processed", httpStatus: 200 };
   }
 
-  const now = new Date();
+  const now = Temporal.Now.instant();
 
   switch (callback.state) {
     case "AUTHORIZED": {
@@ -484,8 +490,10 @@ export async function processVippsCallback(
       };
       session.order = {
         id: `order-${session.id}`,
-        reference: `ORD-${now.getFullYear()}-${session.id.slice(-6)}`,
-        created_at: now.toISOString(),
+        reference: `ORD-${now.toZonedDateTimeISO("UTC").year}-${
+          session.id.slice(-6)
+        }`,
+        created_at: now.toString(),
       };
       session.messages = [{
         type: "info",
@@ -526,7 +534,7 @@ export async function processVippsCallback(
       logger.warn(`Unhandled state ${callback.state} for ${session.id}`);
   }
 
-  session.updated_at = now.toISOString();
+  session.updated_at = now.toString();
   await saveSessions(sessions);
   clearAccessToken(session.id);
 

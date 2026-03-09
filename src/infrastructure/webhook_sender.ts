@@ -73,7 +73,8 @@ export function createShippedOrderEvent(
   carrier: string = "PostNord",
   status: "shipped" | "in_transit" | "delivered" = "delivered",
 ): OrderEvent {
-  const now = new Date().toISOString();
+  const now = Temporal.Now.instant();
+  const nowStr = now.toString();
   const eventId = `evt-${crypto.randomUUID()}`;
 
   // Build fulfillment events based on status
@@ -82,7 +83,9 @@ export function createShippedOrderEvent(
       id: "fe-1",
       type: "processing",
       line_items: [{ line_item_id: "li-1", quantity: 1 }],
-      created_time: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
+      created_time: now.add(
+        Temporal.Duration.from({ milliseconds: -172800000 }),
+      ).toString(), // 2 days ago
     },
     {
       id: "fe-2",
@@ -91,7 +94,8 @@ export function createShippedOrderEvent(
       tracking_number: trackingNumber,
       tracking_url: trackingUrl,
       carrier,
-      created_time: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
+      created_time: now.add(Temporal.Duration.from({ milliseconds: -86400000 }))
+        .toString(), // 1 day ago
     },
   ];
 
@@ -104,7 +108,8 @@ export function createShippedOrderEvent(
       tracking_number: trackingNumber,
       tracking_url: trackingUrl,
       carrier,
-      created_time: new Date(Date.now() - 43200000).toISOString(), // 12 hours ago
+      created_time: now.add(Temporal.Duration.from({ milliseconds: -43200000 }))
+        .toString(), // 12 hours ago
     });
   }
 
@@ -117,7 +122,7 @@ export function createShippedOrderEvent(
       tracking_number: trackingNumber,
       tracking_url: trackingUrl,
       carrier,
-      created_time: now,
+      created_time: nowStr,
     });
   }
 
@@ -140,7 +145,7 @@ export function createShippedOrderEvent(
     checkout_id: checkoutId,
     permalink_url: `http://localhost:8080/orders/${orderId}`,
     event_id: eventId,
-    created_time: now,
+    created_time: nowStr,
     line_items: [
       {
         id: "li-1",

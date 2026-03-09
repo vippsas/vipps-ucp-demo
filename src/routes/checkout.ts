@@ -207,9 +207,9 @@ export async function handleCreateCheckoutSession(
   }
   totals.push({ type: "total", amount: total });
 
-  const now = new Date();
-  const expiresAt = new Date(
-    now.getTime() + SESSION_EXPIRY_HOURS * 60 * 60 * 1000,
+  const now = Temporal.Now.instant();
+  const expiresAt = now.add(
+    Temporal.Duration.from({ hours: SESSION_EXPIRY_HOURS }),
   );
 
   const paymentHandlers = mapPaymentHandlers();
@@ -230,9 +230,9 @@ export async function handleCreateCheckoutSession(
       available_methods: availableMethods,
     },
     payment: paymentHandlers ? { handlers: paymentHandlers } : undefined,
-    created_at: now.toISOString(),
-    updated_at: now.toISOString(),
-    expires_at: expiresAt.toISOString(),
+    created_at: now.toString(),
+    updated_at: now.toString(),
+    expires_at: expiresAt.toString(),
     metadata: body.metadata,
     // Store platform webhook URL from UCP-Agent profile for order events
     platform_webhook_url: platformWebhookUrl,
@@ -268,7 +268,7 @@ export async function handleCreateCheckoutSession(
         requestId: ucpHeaders.requestContext.requestId,
         correlationId: ucpHeaders.requestContext.correlationId,
         sessionId: session.id,
-        timestamp: new Date(),
+        timestamp: now,
       }),
     );
   }
@@ -303,7 +303,10 @@ export async function handleGetCheckoutSession(
   // Check if session expired
   if (
     session.expires_at &&
-    new Date(session.expires_at) < new Date() &&
+    Temporal.Instant.compare(
+        Temporal.Instant.from(session.expires_at),
+        Temporal.Now.instant(),
+      ) < 0 &&
     session.status === "incomplete"
   ) {
     session.status = "canceled";
@@ -320,7 +323,10 @@ export async function handleGetCheckoutSession(
   if (
     session.status === "complete_in_progress" &&
     session.payment?.expires_at &&
-    new Date(session.payment.expires_at) < new Date()
+    Temporal.Instant.compare(
+        Temporal.Instant.from(session.payment.expires_at),
+        Temporal.Now.instant(),
+      ) < 0
   ) {
     session.status = "canceled";
     session.payment.state = "expired";
@@ -342,10 +348,15 @@ export async function handleGetCheckoutSession(
       serializeUCPRequestContext({
         requestId: ucpHeaders.requestContext.requestId,
         sessionId: session.id,
-        timestamp: new Date(),
+        timestamp: Temporal.Now.instant(),
       }),
     );
   }
+
+  logger.info(
+    "GetCheckoutSession returning session:",
+    JSON.stringify(session, null, 2),
+  );
 
   return new Response(JSON.stringify(session), {
     status: 200,
@@ -501,7 +512,7 @@ export async function handleUpdateCheckoutSession(
   newTotals.push({ type: "total", amount: total });
 
   session.totals = newTotals;
-  session.updated_at = new Date().toISOString();
+  session.updated_at = Temporal.Now.instant().toString();
 
   // Update status to ready_for_complete if fulfillment is selected
   if (fulfillmentCost >= 0 && session.status === "incomplete") {
@@ -524,7 +535,7 @@ export async function handleUpdateCheckoutSession(
       serializeUCPRequestContext({
         requestId: ucpHeaders.requestContext.requestId,
         sessionId: session.id,
-        timestamp: new Date(),
+        timestamp: Temporal.Now.instant(),
       }),
     );
   }
@@ -709,7 +720,7 @@ export async function handleCancelCheckout(
   // For now, we just update the session status
 
   session.status = "canceled";
-  session.updated_at = new Date().toISOString();
+  session.updated_at = Temporal.Now.instant().toString();
   session.messages = [{
     type: "info",
     code: "session_canceled",
@@ -732,7 +743,7 @@ export async function handleCancelCheckout(
       serializeUCPRequestContext({
         requestId: ucpHeaders.requestContext.requestId,
         sessionId: session.id,
-        timestamp: new Date(),
+        timestamp: Temporal.Now.instant(),
       }),
     );
   }
@@ -826,7 +837,11 @@ export async function handleCompleteCheckout(
 
   if (
     session.status === "canceled" ||
-    (session.expires_at && new Date(session.expires_at) < new Date())
+    (session.expires_at &&
+      Temporal.Instant.compare(
+          Temporal.Instant.from(session.expires_at),
+          Temporal.Now.instant(),
+        ) < 0)
   ) {
     if (session.status !== "canceled") {
       session.status = "canceled";
@@ -888,15 +903,19 @@ export async function handleCompleteCheckout(
   // Payment created successfully with Vipps
   // For PUSH_MESSAGE flow, payment state will be CREATED initially
   // The actual authorization happens asynchronously when user approves in Vipps app
-  const now = new Date();
-  const paymentExpiresAt = new Date(now.getTime() + PAYMENT_TIMEOUT_MS);
+  const now = Temporal.Now.instant();
+  const paymentExpiresAt = now.add(
+    Temporal.Duration.from({ milliseconds: PAYMENT_TIMEOUT_MS }),
+  );
 
   if (paymentResult.data.state === "AUTHORIZED") {
     session.status = "completed";
     session.order = {
       id: `order-${session.id}`,
-      reference: `ORD-${now.getFullYear()}-${session.id.slice(-6)}`,
-      created_at: now.toISOString(),
+      reference: `ORD-${now.toZonedDateTimeISO("UTC").year}-${
+        session.id.slice(-6)
+      }`,
+      created_at: now.toString(),
     };
     session.messages = [{
       type: "info",
@@ -911,7 +930,7 @@ export async function handleCompleteCheckout(
       ...session.payment,
       state: "pending_approval",
       vipps_reference: paymentResult.data.reference,
-      expires_at: paymentExpiresAt.toISOString(),
+      expires_at: paymentExpiresAt.toString(),
     };
     session.messages = [{
       type: "info",
@@ -921,7 +940,7 @@ export async function handleCompleteCheckout(
     }];
   }
 
-  session.updated_at = now.toISOString();
+  session.updated_at = now.toString();
 
   // Store Vipps reference in metadata for debugging/tracking
   session.metadata = {
@@ -960,7 +979,7 @@ export async function handleCompleteCheckout(
       serializeUCPRequestContext({
         requestId: ucpHeaders.requestContext.requestId,
         sessionId: session.id,
-        timestamp: new Date(),
+        timestamp: Temporal.Now.instant(),
       }),
     );
   }
@@ -1045,7 +1064,7 @@ export async function handleVippsCallback(req: Request): Promise<Response> {
     });
   }
 
-  const now = new Date();
+  const now = Temporal.Now.instant();
 
   switch (callback.state) {
     case "AUTHORIZED": {
@@ -1059,8 +1078,10 @@ export async function handleVippsCallback(req: Request): Promise<Response> {
       };
       session.order = {
         id: `order-${session.id}`,
-        reference: `ORD-${now.getFullYear()}-${session.id.slice(-6)}`,
-        created_at: now.toISOString(),
+        reference: `ORD-${now.toZonedDateTimeISO("UTC").year}-${
+          session.id.slice(-6)
+        }`,
+        created_at: now.toString(),
       };
       session.messages = [{
         type: "info",
@@ -1110,7 +1131,7 @@ export async function handleVippsCallback(req: Request): Promise<Response> {
       logger.warn(`Unhandled state ${callback.state} for ${session.id}`);
   }
 
-  session.updated_at = now.toISOString();
+  session.updated_at = now.toString();
   await saveSessions(sessions);
 
   // Clear cached access token
@@ -1252,7 +1273,7 @@ async function processPaymentAuthorized(
     return; // Already processed
   }
 
-  const now = new Date();
+  const now = Temporal.Now.instant();
 
   session.status = "completed";
   session.payment = {
@@ -1263,15 +1284,17 @@ async function processPaymentAuthorized(
   };
   session.order = {
     id: `order-${session.id}`,
-    reference: `ORD-${now.getFullYear()}-${session.id.slice(-6)}`,
-    created_at: now.toISOString(),
+    reference: `ORD-${now.toZonedDateTimeISO("UTC").year}-${
+      session.id.slice(-6)
+    }`,
+    created_at: now.toString(),
   };
   session.messages = [{
     type: "info",
     code: "payment_approved",
     content: "Payment approved. Your order has been placed.",
   }];
-  session.updated_at = now.toISOString();
+  session.updated_at = now.toString();
 
   await saveSessions(sessions);
   clearAccessToken(sessionId);
@@ -1300,7 +1323,7 @@ async function processPaymentFailed(
     state: paymentState,
   };
   session.messages = [];
-  session.updated_at = new Date().toISOString();
+  session.updated_at = Temporal.Now.instant().toString();
 
   await saveSessions(sessions);
   clearAccessToken(sessionId);

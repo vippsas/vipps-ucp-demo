@@ -101,7 +101,10 @@ export async function checkAndUpdateExpiry(
   // Check if session expired
   if (
     currentSession.expires_at &&
-    new Date(currentSession.expires_at) < new Date() &&
+    Temporal.Instant.compare(
+        Temporal.Instant.from(currentSession.expires_at),
+        Temporal.Now.instant(),
+      ) < 0 &&
     currentSession.status === "incomplete"
   ) {
     currentSession.status = "canceled";
@@ -118,7 +121,10 @@ export async function checkAndUpdateExpiry(
   if (
     currentSession.status === "complete_in_progress" &&
     currentSession.payment?.expires_at &&
-    new Date(currentSession.payment.expires_at) < new Date()
+    Temporal.Instant.compare(
+        Temporal.Instant.from(currentSession.payment.expires_at),
+        Temporal.Now.instant(),
+      ) < 0
   ) {
     currentSession.status = "incomplete";
     currentSession.payment.state = "expired";
@@ -152,7 +158,7 @@ export async function updateSessionStatus(
 
   const session = sessions[index];
   session.status = status;
-  session.updated_at = new Date().toISOString();
+  session.updated_at = Temporal.Now.instant().toString();
 
   if (additionalUpdates) {
     Object.assign(session, additionalUpdates);
@@ -213,7 +219,7 @@ export function buildTotals(
  * Gets the session expiry timestamp.
  */
 export function getSessionExpiryTime(): string {
-  const expiresAt = new Date();
-  expiresAt.setHours(expiresAt.getHours() + SESSION_EXPIRY_HOURS);
-  return expiresAt.toISOString();
+  return Temporal.Now.instant()
+    .add(Temporal.Duration.from({ hours: SESSION_EXPIRY_HOURS }))
+    .toString();
 }

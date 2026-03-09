@@ -11,7 +11,9 @@
 import { encodeBase64Url } from "@std/encoding/base64url";
 import { canonicalizeToBytes } from "@std/json/unstable-canonicalize";
 import type { JsonValue } from "@std/json/types";
+import { Logger } from "@deno-library/logger";
 
+const logger = new Logger();
 let privateKey: CryptoKey;
 let keyId: string;
 
@@ -27,7 +29,7 @@ export async function initSigningKeys(): Promise<void> {
   privateKey = keyPair.privateKey;
   keyId = KEY_ID;
 
-  console.log(`Signing keys initialized (kid: ${keyId})`);
+  logger.info(`Signing keys initialized (kid: ${keyId})`);
 }
 
 export function getSigningKeyId(): string {

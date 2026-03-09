@@ -1,18 +1,20 @@
+import { Logger } from "@deno-library/logger";
 import type { Product, ProductsStore } from "../types/merchant.ts";
 
+const logger = new Logger();
 const DATA_FILE = new URL("../data/products.json", import.meta.url);
 
 async function loadProducts(): Promise<ProductsStore> {
   try {
     const data = await Deno.readTextFile(DATA_FILE);
     const store: ProductsStore = JSON.parse(data);
-    console.log(
-      `[PRODUCTS] Loaded ${store.products.length} products from ${DATA_FILE.pathname}`,
+    logger.info(
+      `Loaded ${store.products.length} products from ${DATA_FILE.pathname}`,
     );
     return store;
   } catch (error) {
-    console.error(
-      `[PRODUCTS] Failed to load products from ${DATA_FILE.pathname}:`,
+    logger.error(
+      `Failed to load products from ${DATA_FILE.pathname}:`,
       error,
     );
     return { products: [] };

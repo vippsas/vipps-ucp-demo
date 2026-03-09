@@ -8,7 +8,10 @@
 
 import { canonicalize } from "@std/json/unstable-canonicalize";
 import type { JsonValue } from "@std/json/types";
+import { Logger } from "@deno-library/logger";
 import { createDetachedSignature, getSigningKeyId } from "./signing_keys.ts";
+
+const logger = new Logger();
 
 const BUSINESS_ORIGIN = "http://localhost:8080";
 
@@ -27,9 +30,9 @@ export async function sendOrderWebhook(
 
   const signature = await createDetachedSignature(payload);
 
-  console.log(`[WEBHOOK] Sending order event to ${webhookUrl}`);
-  console.log(`[WEBHOOK] Origin: ${BUSINESS_ORIGIN}`);
-  console.log(`[WEBHOOK] Signature kid: ${getSigningKeyId()}`);
+  logger.info(
+    `Sending order event to ${webhookUrl} origin=${BUSINESS_ORIGIN} kid=${getSigningKeyId()}`,
+  );
 
   const response = await fetch(webhookUrl, {
     method: "POST",
@@ -41,7 +44,7 @@ export async function sendOrderWebhook(
     body,
   });
 
-  console.log(`[WEBHOOK] Response status: ${response.status}`);
+  logger.info(`Response status: ${response.status}`);
 
   return response;
 }

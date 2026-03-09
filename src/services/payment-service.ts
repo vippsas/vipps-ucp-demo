@@ -5,6 +5,8 @@
  * Implements the payment flow for the Vipps MobilePay wallet handler.
  */
 
+import { delay } from "@std/async/delay";
+import { poll } from "@std/async/unstable-poll";
 import {
   clearAccessToken,
   createPayment,
@@ -259,8 +261,20 @@ async function updateStockForSession(session: CheckoutSession): Promise<void> {
 // Background Payment Polling
 // ============================================
 
+/** Result from one poll attempt; poll stops when done is true. */
+type PaymentPollResult =
+  | { done: true; reason: "session_gone" }
+  | { done: true; reason: "already_processed" }
+  | {
+    done: true;
+    reason: "terminal";
+    state: string;
+    pspReference?: string;
+  }
+  | { done: false };
+
 /**
- * Starts background polling for payment status.
+ * Starts background polling for payment status using @std/async poll.
  * This is a backup mechanism to callbacks.
  * @see https://developer.vippsmobilepay.com/docs/knowledge-base/polling-guidelines/
  */
@@ -268,94 +282,119 @@ export async function startPaymentPolling(
   sessionId: string,
   vippsReference: string,
 ): Promise<void> {
-  // Wait initial delay per Vipps guidelines
-  await new Promise((resolve) =>
-    setTimeout(resolve, VIPPS_POLL_INITIAL_DELAY_MS)
-  );
+  await delay(VIPPS_POLL_INITIAL_DELAY_MS);
 
-  for (let attempt = 0; attempt < VIPPS_POLL_MAX_ATTEMPTS; attempt++) {
+  const pollTimeoutMs = VIPPS_POLL_MAX_ATTEMPTS * VIPPS_POLL_INTERVAL_MS;
+
+  async function runOnePoll(): Promise<PaymentPollResult> {
     const sessions = await loadSessions();
     const session = sessions.find((s) => s.id === sessionId);
 
     if (!session) {
+      return { done: true, reason: "session_gone" };
+    }
+    if (session.status !== "complete_in_progress") {
+      return { done: true, reason: "already_processed" };
+    }
+
+    const statusResult = await getPaymentStatus(sessionId, vippsReference);
+    if (!statusResult.success) {
+      logger.error(
+        `Failed to get status for ${sessionId}: ${statusResult.error}`,
+      );
+      return { done: false };
+    }
+
+    const { state, pspReference } = statusResult.data;
+    logger.info(`Payment ${vippsReference} state: ${state}`);
+
+    if (
+      state === "AUTHORIZED" ||
+      state === "ABORTED" ||
+      state === "EXPIRED" ||
+      state === "TERMINATED"
+    ) {
+      return { done: true, reason: "terminal", state, pspReference };
+    }
+    return { done: false };
+  }
+
+  try {
+    const result = await poll(
+      () => runOnePoll(),
+      (r) => r.done === true,
+      {
+        interval: VIPPS_POLL_INTERVAL_MS,
+        signal: AbortSignal.timeout(pollTimeoutMs),
+      },
+    );
+
+    if (!result.done) {
+      throw new Error("Unexpected: poll returned with done=false");
+    }
+
+    if (result.reason === "session_gone") {
       logger.info(`Session ${sessionId} not found, stopping`);
       return;
     }
-
-    // If already processed (by callback), stop polling
-    if (session.status !== "complete_in_progress") {
+    if (result.reason === "already_processed") {
       logger.info(
-        `Session ${sessionId} already processed (${session.status}), stopping`,
+        `Session ${sessionId} already processed, stopping`,
       );
       return;
     }
-
-    // Poll Vipps for payment status
-    const result = await getPaymentStatus(sessionId, vippsReference);
-
-    if (!result.success) {
-      logger.error(`Failed to get status for ${sessionId}: ${result.error}`);
-      await new Promise((resolve) =>
-        setTimeout(resolve, VIPPS_POLL_INTERVAL_MS)
-      );
-      continue;
+    if (result.reason === "terminal") {
+      switch (result.state) {
+        case "AUTHORIZED":
+          logger.info(`Payment AUTHORIZED for ${sessionId}`);
+          await processPaymentAuthorized(
+            sessionId,
+            vippsReference,
+            result.pspReference,
+          );
+          return;
+        case "ABORTED":
+          logger.info(`Payment ABORTED for ${sessionId}`);
+          await processPaymentFailed(
+            sessionId,
+            "rejected",
+            "payment_rejected",
+            "Payment was declined. Please try again or choose a different payment method.",
+          );
+          return;
+        case "EXPIRED":
+          logger.info(`Payment EXPIRED for ${sessionId}`);
+          await processPaymentFailed(
+            sessionId,
+            "expired",
+            "payment_expired",
+            "Payment request expired. Please try again.",
+          );
+          return;
+        case "TERMINATED":
+          logger.info(`Payment TERMINATED for ${sessionId}`);
+          await processPaymentFailed(
+            sessionId,
+            "cancelled",
+            "payment_cancelled",
+            "Payment was cancelled. Please try again.",
+          );
+          return;
+      }
     }
-
-    const { state, pspReference } = result.data;
-    logger.info(`Payment ${vippsReference} state: ${state}`);
-
-    // Process terminal states
-    if (state === "AUTHORIZED") {
-      logger.info(`Payment AUTHORIZED for ${sessionId}`);
-      await processPaymentAuthorized(sessionId, vippsReference, pspReference);
-      return;
-    }
-
-    if (state === "ABORTED") {
-      logger.info(`Payment ABORTED for ${sessionId}`);
-      await processPaymentFailed(
-        sessionId,
-        "rejected",
-        "payment_rejected",
-        "Payment was declined. Please try again or choose a different payment method.",
-      );
-      return;
-    }
-
-    if (state === "EXPIRED") {
-      logger.info(`Payment EXPIRED for ${sessionId}`);
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      logger.info(`Max attempts reached for ${sessionId}`);
       await processPaymentFailed(
         sessionId,
         "expired",
         "payment_expired",
-        "Payment request expired. Please try again.",
+        "Payment request timed out. Please try again.",
       );
       return;
     }
-
-    if (state === "TERMINATED") {
-      logger.info(`Payment TERMINATED for ${sessionId}`);
-      await processPaymentFailed(
-        sessionId,
-        "cancelled",
-        "payment_cancelled",
-        "Payment was cancelled. Please try again.",
-      );
-      return;
-    }
-
-    // Still CREATED - wait and poll again
-    await new Promise((resolve) => setTimeout(resolve, VIPPS_POLL_INTERVAL_MS));
+    throw err;
   }
-
-  // Max attempts reached
-  logger.info(`Max attempts reached for ${sessionId}`);
-  await processPaymentFailed(
-    sessionId,
-    "expired",
-    "payment_expired",
-    "Payment request timed out. Please try again.",
-  );
 }
 
 /**

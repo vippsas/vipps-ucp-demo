@@ -353,11 +353,6 @@ export async function handleGetCheckoutSession(
     );
   }
 
-  logger.info(
-    "GetCheckoutSession returning session:",
-    JSON.stringify(session, null, 2),
-  );
-
   return new Response(JSON.stringify(session), {
     status: 200,
     headers: responseHeaders,

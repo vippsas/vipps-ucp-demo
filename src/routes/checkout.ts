@@ -314,20 +314,15 @@ export async function handleGetCheckoutSession(
     await saveSessions(sessions);
   }
 
-  // Check if payment expired (for complete_in_progress sessions)
+  // Check if payment expired (for complete_in_progress sessions) → terminal state
   if (
     session.status === "complete_in_progress" &&
     session.payment?.expires_at &&
     new Date(session.payment.expires_at) < new Date()
   ) {
-    session.status = "incomplete";
+    session.status = "canceled";
     session.payment.state = "expired";
-    session.messages = [{
-      type: "error",
-      code: "payment_expired",
-      severity: "requires_buyer_input",
-      content: "Payment request expired. Please try again.",
-    }];
+    session.messages = [];
     await saveSessions(sessions);
   }
 
@@ -349,6 +344,11 @@ export async function handleGetCheckoutSession(
       }),
     );
   }
+
+  console.log(
+    "[GetCheckoutSession] Returning session:",
+    JSON.stringify(session, null, 2),
+  );
 
   return new Response(JSON.stringify(session), {
     status: 200,
@@ -1081,54 +1081,38 @@ export async function handleVippsCallback(req: Request): Promise<Response> {
     }
 
     case "ABORTED": {
-      // User rejected the payment
+      // Terminal state: payment rejected
       console.log(`[VippsCallback] Payment ABORTED for ${session.id}`);
-      session.status = "incomplete";
+      session.status = "canceled";
       session.payment = {
         ...session.payment,
         state: "rejected",
       };
-      session.messages = [{
-        type: "error",
-        code: "payment_rejected",
-        severity: "requires_buyer_input",
-        content:
-          "Payment was declined. Please try again or choose a different payment method.",
-      }];
+      session.messages = [];
       break;
     }
 
     case "EXPIRED": {
-      // Payment request expired
+      // Terminal state: payment expired
       console.log(`[VippsCallback] Payment EXPIRED for ${session.id}`);
-      session.status = "incomplete";
+      session.status = "canceled";
       session.payment = {
         ...session.payment,
         state: "expired",
       };
-      session.messages = [{
-        type: "error",
-        code: "payment_expired",
-        severity: "requires_buyer_input",
-        content: "Payment request expired. Please try again.",
-      }];
+      session.messages = [];
       break;
     }
 
     case "TERMINATED": {
-      // Payment was cancelled
+      // Terminal state: payment cancelled
       console.log(`[VippsCallback] Payment TERMINATED for ${session.id}`);
-      session.status = "incomplete";
+      session.status = "canceled";
       session.payment = {
         ...session.payment,
         state: "cancelled",
       };
-      session.messages = [{
-        type: "error",
-        code: "payment_cancelled",
-        severity: "requires_buyer_input",
-        content: "Payment was cancelled. Please try again.",
-      }];
+      session.messages = [];
       break;
     }
 
@@ -1321,17 +1305,13 @@ async function processPaymentFailed(
     return; // Already processed
   }
 
-  session.status = "incomplete";
+  // ABORTED, EXPIRED, TERMINATED are terminal states → checkout session canceled, no error message
+  session.status = "canceled";
   session.payment = {
     ...session.payment,
     state: paymentState,
   };
-  session.messages = [{
-    type: "error",
-    code: errorCode,
-    severity: "requires_buyer_input",
-    content: errorMessage,
-  }];
+  session.messages = [];
   session.updated_at = new Date().toISOString();
 
   await saveSessions(sessions);

@@ -1,9 +1,12 @@
 {
+  "unstable": ["temporal"],
   "tasks": {
     "start": "deno run --allow-net --allow-read --allow-write --allow-env src/main.ts",
     "dev": "deno run --watch --allow-net --allow-read --allow-write --allow-env src/main.ts"
   },
   "imports": {
+    "@deno-library/logger": "jsr:@deno-library/logger@^1.2.0",
+    "@std/async": "jsr:@std/async@1.2.0",
     "@std/dotenv": "jsr:@std/dotenv@^0.225.6",
     "@std/encoding": "jsr:@std/encoding@^1.0.10",
     "@std/http": "jsr:@std/http@^1.0.25",

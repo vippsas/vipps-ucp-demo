@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { Logger } from "@deno-library/logger";
 import { loadConfig } from "./infrastructure/config.ts";
 import { UCP_HEADERS } from "./infrastructure/ucp_headers.ts";
 import { initSigningKeys } from "./infrastructure/signing_keys.ts";
@@ -69,5 +70,6 @@ app.post("/api/vipps/callback", (c) => handleVippsCallback(c.req.raw));
 app.post("/api/shipping/callback", (c) => handleShippingCallback(c.req.raw));
 
 const PORT = 8080;
-console.log(`🏪 UCP Business Service starting on http://localhost:${PORT}`);
+const logger = new Logger();
+logger.info(`UCP Business Service starting on http://localhost:${PORT}`);
 Deno.serve({ port: PORT }, app.fetch);

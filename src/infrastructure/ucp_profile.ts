@@ -5,10 +5,13 @@
  * helpers for accessing UCP version, capabilities, and response metadata.
  */
 
+import { Logger } from "@deno-library/logger";
 import type {
   UCPCapability,
   UCPResponseMetadata,
 } from "../types/ucp/checkout.ts";
+
+const logger = new Logger();
 
 // ============================================
 // Profile Types
@@ -94,10 +97,11 @@ export async function initUCPProfile(): Promise<void> {
   const capabilities = Object.keys(profile.ucp.capabilities);
   const paymentHandlers = Object.keys(profile.ucp.payment_handlers ?? {});
 
-  console.log(`[UCP] Profile loaded:`);
-  console.log(`  Version: ${profile.ucp.version}`);
-  console.log(`  Capabilities: ${capabilities.join(", ")}`);
-  console.log(`  Payment handlers: ${paymentHandlers.join(", ") || "none"}`);
+  logger.info(
+    `Profile loaded: version=${profile.ucp.version} capabilities=${
+      capabilities.join(", ")
+    } payment_handlers=${paymentHandlers.join(", ") || "none"}`,
+  );
 }
 
 /**

@@ -1,4 +1,7 @@
 import { load } from "@std/dotenv";
+import { Logger } from "@deno-library/logger";
+
+const logger = new Logger();
 
 export interface VippsConfig {
   apiBaseUrl: string;
@@ -34,9 +37,7 @@ export async function loadConfig(): Promise<void> {
   ];
   const missing = required.filter((key) => !config![key]?.trim());
   if (missing.length > 0) {
-    console.error(
-      "Missing or empty required env: " + missing.join(", "),
-    );
+    logger.error("Missing or empty required env: " + missing.join(", "));
     Deno.exit(1);
   }
 }

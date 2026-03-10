@@ -8,7 +8,10 @@
 
 import { canonicalize } from "@std/json/unstable-canonicalize";
 import type { JsonValue } from "@std/json/types";
+import { Logger } from "@deno-library/logger";
 import { createDetachedSignature, getSigningKeyId } from "./signing_keys.ts";
+
+const logger = new Logger();
 
 const BUSINESS_ORIGIN = "http://localhost:8080";
 
@@ -27,9 +30,9 @@ export async function sendOrderWebhook(
 
   const signature = await createDetachedSignature(payload);
 
-  console.log(`[WEBHOOK] Sending order event to ${webhookUrl}`);
-  console.log(`[WEBHOOK] Origin: ${BUSINESS_ORIGIN}`);
-  console.log(`[WEBHOOK] Signature kid: ${getSigningKeyId()}`);
+  logger.info(
+    `Sending order event to ${webhookUrl} origin=${BUSINESS_ORIGIN} kid=${getSigningKeyId()}`,
+  );
 
   const response = await fetch(webhookUrl, {
     method: "POST",
@@ -41,7 +44,7 @@ export async function sendOrderWebhook(
     body,
   });
 
-  console.log(`[WEBHOOK] Response status: ${response.status}`);
+  logger.info(`Response status: ${response.status}`);
 
   return response;
 }
@@ -70,7 +73,8 @@ export function createShippedOrderEvent(
   carrier: string = "PostNord",
   status: "shipped" | "in_transit" | "delivered" = "delivered",
 ): OrderEvent {
-  const now = new Date().toISOString();
+  const now = Temporal.Now.instant();
+  const nowStr = now.toString();
   const eventId = `evt-${crypto.randomUUID()}`;
 
   // Build fulfillment events based on status
@@ -79,7 +83,9 @@ export function createShippedOrderEvent(
       id: "fe-1",
       type: "processing",
       line_items: [{ line_item_id: "li-1", quantity: 1 }],
-      created_time: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
+      created_time: now.add(
+        Temporal.Duration.from({ milliseconds: -172800000 }),
+      ).toString(), // 2 days ago
     },
     {
       id: "fe-2",
@@ -88,7 +94,8 @@ export function createShippedOrderEvent(
       tracking_number: trackingNumber,
       tracking_url: trackingUrl,
       carrier,
-      created_time: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
+      created_time: now.add(Temporal.Duration.from({ milliseconds: -86400000 }))
+        .toString(), // 1 day ago
     },
   ];
 
@@ -101,7 +108,8 @@ export function createShippedOrderEvent(
       tracking_number: trackingNumber,
       tracking_url: trackingUrl,
       carrier,
-      created_time: new Date(Date.now() - 43200000).toISOString(), // 12 hours ago
+      created_time: now.add(Temporal.Duration.from({ milliseconds: -43200000 }))
+        .toString(), // 12 hours ago
     });
   }
 
@@ -114,7 +122,7 @@ export function createShippedOrderEvent(
       tracking_number: trackingNumber,
       tracking_url: trackingUrl,
       carrier,
-      created_time: now,
+      created_time: nowStr,
     });
   }
 
@@ -137,7 +145,7 @@ export function createShippedOrderEvent(
     checkout_id: checkoutId,
     permalink_url: `http://localhost:8080/orders/${orderId}`,
     event_id: eventId,
-    created_time: now,
+    created_time: nowStr,
     line_items: [
       {
         id: "li-1",

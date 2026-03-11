@@ -519,7 +519,7 @@ function calculateTaxFromTotal(
  * Maps Vipps ePayment API errors to UCP message format.
  *
  * Error mapping follows the handler specification:
- * https://ucp.vippsmobilepay.com/ucp/2026-01-23/paymnet_handlers/vipps_mp_payment_handler#error-handling
+ * https://ucp.vippsmobilepay.com/ucp/2026-01-23/payment_handlers/vipps_mp_payment_handler.md#error-handling
  *
  * IMPORTANT: Error messages are intentionally opaque to avoid leaking
  * internal payment provider details to the platform.

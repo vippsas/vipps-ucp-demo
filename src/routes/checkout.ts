@@ -543,8 +543,8 @@ export async function handleUpdateCheckoutSession(
 
 /**
  * Handler ID declared in /.well-known/ucp profile.
- * Matches the payment handler: com.vippsmobilepay.pay.payment_handler
- * See: https://vippsmobilepay.com/pay/ucp/2026-01-23/vipps_mp_payment_handler
+ * Matches the payment handler: com.vippsmobilepay.ucp.payment_handler
+ * See: https://ucp.vippsmobilepay.com/ucp/2026-01-23/payment_handlers/vipps_mp_payment_handler.md
  */
 const VIPPS_WALLET_HANDLER_ID = "vippsmobilepay_wallet_handler";
 
@@ -1012,7 +1012,7 @@ interface VippsPaymentCallback {
  * - Payment expires (state: EXPIRED)
  * - Payment is cancelled (state: TERMINATED)
  *
- * See: https://vippsmobilepay.com/pay/ucp/2026-01-23/vipps_mp_payment_handler#vipps-callback-handling
+ * See: https://ucp.vippsmobilepay.com/ucp/2026-01-23/payment_handlers/vipps_mp_payment_handler.md#vipps-callback-handling
  */
 export async function handleVippsCallback(req: Request): Promise<Response> {
   let callback: VippsPaymentCallback;

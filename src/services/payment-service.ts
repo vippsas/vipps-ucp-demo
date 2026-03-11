@@ -44,8 +44,8 @@ const VIPPS_POLL_MAX_ATTEMPTS = 150;
 
 /**
  * Handler ID declared in /.well-known/ucp profile.
- * Matches the payment handler: com.vippsmobilepay.pay.payment_handler
- * @see https://vippsmobilepay.com/pay/ucp/2026-01-23/vipps_mp_payment_handler
+ * Matches the payment handler: com.vippsmobilepay.ucp.payment_handler
+ * @see https://ucp.vippsmobilepay.com/ucp/2026-01-23/payment_handlers/vipps_mp_payment_handler.md
  */
 export const VIPPS_WALLET_HANDLER_ID = "vippsmobilepay_wallet_handler";
 
@@ -208,9 +208,8 @@ export async function processPayment(
     session.status = "completed";
     session.order = {
       id: `order-${session.id}`,
-      reference: `ORD-${now.toZonedDateTimeISO("UTC").year}-${
-        session.id.slice(-6)
-      }`,
+      reference: `ORD-${now.toZonedDateTimeISO("UTC").year}-${session.id.slice(-6)
+        }`,
       created_at: now.toString(),
     };
     session.messages = [{
@@ -425,9 +424,8 @@ export async function processPaymentAuthorized(
   };
   session.order = {
     id: `order-${session.id}`,
-    reference: `ORD-${now.toZonedDateTimeISO("UTC").year}-${
-      session.id.slice(-6)
-    }`,
+    reference: `ORD-${now.toZonedDateTimeISO("UTC").year}-${session.id.slice(-6)
+      }`,
     created_at: now.toString(),
   };
   session.messages = [{
@@ -529,9 +527,8 @@ export async function processVippsCallback(
       };
       session.order = {
         id: `order-${session.id}`,
-        reference: `ORD-${now.toZonedDateTimeISO("UTC").year}-${
-          session.id.slice(-6)
-        }`,
+        reference: `ORD-${now.toZonedDateTimeISO("UTC").year}-${session.id.slice(-6)
+          }`,
         created_at: now.toString(),
       };
       session.messages = [{

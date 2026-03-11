@@ -36,7 +36,6 @@
       "jsr:@hono/hono@4.12.7",
       "jsr:@std/async@1.2.0",
       "jsr:@std/dotenv@~0.225.6",
-      "jsr:@std/encoding@^1.0.10",
       "jsr:@std/http@^1.0.25",
       "jsr:@std/json@1.0.3"
     ]

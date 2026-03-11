@@ -8,7 +8,6 @@
  * @module
  */
 
-import { encodeBase64Url } from "@std/encoding/base64url";
 import { canonicalizeToBytes } from "@std/json/unstable-canonicalize";
 import type { JsonValue } from "@std/json/types";
 let privateKey: CryptoKey;
@@ -47,9 +46,10 @@ export async function createDetachedSignature(
   const canonicalBytes = canonicalizeToBytes(payload);
 
   const encoder = new TextEncoder();
+  const b64url = { alphabet: "base64url" as const, omitPadding: true };
   const header = { alg: "ES256", kid: keyId };
-  const headerB64 = encodeBase64Url(encoder.encode(JSON.stringify(header)));
-  const payloadB64 = encodeBase64Url(canonicalBytes);
+  const headerB64 = encoder.encode(JSON.stringify(header)).toBase64(b64url);
+  const payloadB64 = canonicalBytes.toBase64(b64url);
   const signingInput = `${headerB64}.${payloadB64}`;
 
   const signature = await crypto.subtle.sign(
@@ -58,6 +58,6 @@ export async function createDetachedSignature(
     encoder.encode(signingInput),
   );
 
-  const signatureB64 = encodeBase64Url(new Uint8Array(signature));
+  const signatureB64 = new Uint8Array(signature).toBase64(b64url);
   return `${headerB64}..${signatureB64}`;
 }

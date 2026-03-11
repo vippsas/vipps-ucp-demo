@@ -242,7 +242,7 @@ This service implements:
   pickup options
 - [UCP Ancillaries](https://ucp.dev/specification/ancillaries/) - Related
   products and upsells
-- [Vipps MobilePay Payment Handler](https://vippsmobilepay.com/pay/ucp/2026-01-23/vipps_mp_payment_handler) -
+- [Vipps MobilePay Payment Handler](https://ucp.vippsmobilepay.com/ucp/2026-01-23/payment_handers/vipps_mp_payment_handler.md) -
   Wallet payments
 
 ### UCP Headers

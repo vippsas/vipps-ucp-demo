@@ -4,8 +4,8 @@
  * Implements the Vipps MobilePay ePayment API for creating wallet payments.
  * See: https://developer.vippsmobilepay.com/api/epayment/
  *
- * Payment Handler: com.vippsmobilepay.pay.payment_handler
- * Handler Spec: https://vippsmobilepay.com/pay/ucp/2026-01-23/vipps_mp_payment_handler
+ * Payment Handler: com.vippsmobilepay.ucp.payment_handler
+ * Handler Spec: https://ucp.vippsmobilepay.com/ucp/2026-01-23/payment_handlers/vipps_mp_payment_handler.md
  *
  * This client:
  * - Handles Access Token API authentication
@@ -515,7 +515,7 @@ function calculateTaxFromTotal(
  * Maps Vipps ePayment API errors to UCP message format.
  *
  * Error mapping follows the handler specification:
- * https://vippsmobilepay.com/pay/ucp/2026-01-23/vipps_mp_payment_handler#error-handling
+ * https://ucp.vippsmobilepay.com/ucp/2026-01-23/payment_handlers/vipps_mp_payment_handler.md#error-handling
  *
  * IMPORTANT: Error messages are intentionally opaque to avoid leaking
  * internal payment provider details to the platform.

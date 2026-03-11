@@ -48,14 +48,14 @@
       ]
     },
     "payment_handlers": {
-      "com.vippsmobilepay.pay.payment_handler": [
+      "com.vippsmobilepay.ucp.payment_handler": [
         {
           "id": "vippsmobilepay_wallet_handler",
           "version": "2026-01-23",
-          "spec": "https://vippsmobilepay.com/pay/ucp/2026-01-23/vipps_mp_payment_handler",
-          "config_schema": "https://vippsmobilepay.com/pay/ucp/2026-01-23/schemas/wallet_payment_handler.json",
+          "spec": "https://ucp.vippsmobilepay.com/ucp/2026-01-23/payment_handlers/vipps_mp_payment_handler",
+          "config_schema": "https://ucp.vippsmobilepay.com/ucp/2026-01-23/schemas/wallet_payment_handler.json",
           "instrument_schemas": [
-            "https://vippsmobilepay.com/pay/ucp/2026-01-23/schemas/wallet_payment_instrument.json"
+            "https://ucp.vippsmobilepay.com/ucp/2026-01-23/schemas/wallet_payment_instrument.json"
           ],
           "config": {
             "merchant_serial_number": "168850",

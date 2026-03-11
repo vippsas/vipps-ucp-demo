@@ -1,4 +1,4 @@
-// Vipps Wallet Payment - https://vippsmobilepay.com/pay/ucp/2026-01-23/vipps_mp_payment_handler
+// Vipps Wallet Payment - https://ucp.vippsmobilepay.com/ucp/2026-01-23/payment_handlers/vipps_mp_payment_handler.md
 
 export interface WalletTokenPaymentCredential {
   type: "TOKEN";

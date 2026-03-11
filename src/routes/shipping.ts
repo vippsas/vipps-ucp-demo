@@ -1,11 +1,8 @@
-import { Logger } from "@deno-library/logger";
 import { getSessionById } from "../infrastructure/sessions.ts";
 import {
   createShippedOrderEvent,
   sendOrderWebhook,
 } from "../infrastructure/webhook_sender.ts";
-
-const logger = new Logger();
 
 /**
  * Simulates a shipping provider (PostNord/Bring/etc) notifying the merchant
@@ -57,7 +54,7 @@ export async function handleShippingCallback(
   const carrier = body.carrier ?? "PostNord";
   const status = body.status ?? "delivered";
 
-  logger.info(
+  console.log(
     `Shipping callback: orderId=${orderId} checkoutId=${checkoutId} carrier=${carrier} status=${status} tracking=${trackingNumber}`,
   );
 
@@ -70,12 +67,12 @@ export async function handleShippingCallback(
     status,
   );
 
-  logger.info(`Sending order webhook to platform: ${platformWebhookUrl}`);
+  console.log(`Sending order webhook to platform: ${platformWebhookUrl}`);
 
   const response = await sendOrderWebhook(platformWebhookUrl, orderEvent);
   const responseText = await response.text();
 
-  logger.info(`Platform response: ${response.status}`);
+  console.log(`Platform response: ${response.status}`);
 
   return Response.json({
     success: response.ok,

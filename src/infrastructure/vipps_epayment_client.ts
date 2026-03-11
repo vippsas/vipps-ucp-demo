@@ -35,10 +35,6 @@ import type {
 } from "../types/vipps/epayment.ts";
 
 import { getConfig } from "./config.ts";
-import { Logger } from "@deno-library/logger";
-
-const logger = new Logger();
-
 // ============================================
 // Configuration
 // ============================================
@@ -92,7 +88,7 @@ async function fetchAccessToken(): Promise<
 
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({}));
-      logger.error(`Token fetch failed: ${response.status}`, errorBody);
+      console.error(`Token fetch failed: ${response.status}`, errorBody);
       return {
         success: false,
         error: {
@@ -104,7 +100,7 @@ async function fetchAccessToken(): Promise<
     }
 
     const data = (await response.json()) as VippsAccessTokenResponse;
-    logger.info(`Token fetched successfully, expires in ${data.expires_in}s`);
+    console.log(`Token fetched successfully, expires in ${data.expires_in}s`);
 
     return {
       success: true,
@@ -112,7 +108,7 @@ async function fetchAccessToken(): Promise<
       expiresIn: data.expires_in,
     };
   } catch (error) {
-    logger.error("Network error fetching token:", error);
+    console.error("Network error fetching token:", error);
     return {
       success: false,
       error: {
@@ -139,7 +135,7 @@ export async function getAccessToken(
 
   // Return cached token if still valid (with buffer)
   if (cached && cached.expiresAt - TOKEN_EXPIRY_BUFFER_MS > now) {
-    logger.info(`Using cached token for checkout ${checkoutId}`);
+    console.log(`Using cached token for checkout ${checkoutId}`);
     return { success: true, token: cached.token };
   }
 
@@ -167,7 +163,7 @@ export function prefetchAccessToken(checkoutId: string): void {
   // Fire and forget - don't await
   getAccessToken(checkoutId).then((result) => {
     if (!result.success) {
-      logger.warn(`Prefetch failed for ${checkoutId}: ${result.error}`);
+      console.warn(`Prefetch failed for ${checkoutId}: ${result.error}`);
     }
   });
 }
@@ -225,7 +221,7 @@ export async function createPayment(
   // Get access token
   const tokenResult = await getAccessToken(checkoutId);
   if (!tokenResult.success) {
-    logger.error(`Auth failed for ${checkoutId}: ${tokenResult.error}`);
+    console.error(`Auth failed for ${checkoutId}: ${tokenResult.error}`);
     return {
       success: false,
       httpStatus: 500,
@@ -261,7 +257,7 @@ export async function createPayment(
   };
 
   try {
-    logger.info(`Creating payment for ${checkoutId}`);
+    console.log(`Creating payment for ${checkoutId}`);
 
     const response = await fetch(VIPPS_EPAYMENT_URL(), {
       method: "POST",
@@ -282,7 +278,7 @@ export async function createPayment(
     if (!response.ok) {
       const errorBody =
         (await response.json().catch(() => ({}))) as VippsEPaymentError;
-      logger.error(`API error: ${response.status}`, errorBody);
+      console.error(`API error: ${response.status}`, errorBody);
       return {
         success: false,
         httpStatus: response.status,
@@ -291,11 +287,11 @@ export async function createPayment(
     }
 
     const data = (await response.json()) as VippsCreatePaymentResponse;
-    logger.info(`Payment created: ${data.reference}, state: ${data.state}`);
+    console.log(`Payment created: ${data.reference}, state: ${data.state}`);
 
     return { success: true, data };
   } catch (error) {
-    logger.error("Network error:", error);
+    console.error("Network error:", error);
     return {
       success: false,
       httpStatus: 502,
@@ -366,7 +362,7 @@ export async function getPaymentStatus(
 
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({}));
-      logger.error(`Get payment failed: ${response.status}`, errorBody);
+      console.error(`Get payment failed: ${response.status}`, errorBody);
       return { success: false, error: `HTTP ${response.status}` };
     }
 
@@ -380,7 +376,7 @@ export async function getPaymentStatus(
       },
     };
   } catch (error) {
-    logger.error("Get payment network error:", error);
+    console.error("Get payment network error:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Network error",
@@ -528,7 +524,7 @@ function mapVippsErrorToUCP(
   httpStatus: number,
   error: VippsEPaymentError,
 ): UCPMessage[] {
-  logger.error("Error details:", JSON.stringify(error));
+  console.error("Error details:", JSON.stringify(error));
 
   // Determine severity and return opaque error message
   const { code, severity, content } = interpretVippsError(httpStatus, error);

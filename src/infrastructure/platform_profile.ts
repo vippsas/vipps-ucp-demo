@@ -11,9 +11,6 @@
  */
 
 import { parseCacheControl } from "@std/http/unstable-cache-control";
-import { Logger } from "@deno-library/logger";
-
-const logger = new Logger();
 
 /**
  * Platform's UCP profile structure (subset of what we need)
@@ -63,14 +60,14 @@ export async function fetchPlatformProfile(
   }
 
   try {
-    logger.info(`Fetching profile from: ${profileUrl}`);
+    console.log(`Fetching profile from: ${profileUrl}`);
 
     const response = await fetch(profileUrl, {
       headers: { Accept: "application/json" },
     });
 
     if (!response.ok) {
-      logger.warn(
+      console.warn(
         `Failed to fetch profile: ${response.status} ${response.statusText}`,
       );
       return null;
@@ -84,10 +81,10 @@ export async function fetchPlatformProfile(
       expiresAt: Temporal.Now.instant().epochMilliseconds + ttl,
     });
 
-    logger.info(`Profile fetched and cached (ttl: ${ttl / 1000}s)`);
+    console.log(`Profile fetched and cached (ttl: ${ttl / 1000}s)`);
     return profile;
   } catch (error) {
-    logger.warn(
+    console.warn(
       `Error fetching profile: ${
         error instanceof Error ? error.message : error
       }`,

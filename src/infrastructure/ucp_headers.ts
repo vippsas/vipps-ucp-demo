@@ -23,10 +23,6 @@ import {
   string,
   token,
 } from "@std/http/unstable-structured-fields";
-import { Logger } from "@deno-library/logger";
-
-const logger = new Logger();
-
 // =============================================================================
 // UCP-Agent Header
 // =============================================================================
@@ -559,7 +555,7 @@ export function parseUCPHeaders(
   // Log warnings for missing headers (non-blocking for POC)
   if (logWarnings) {
     if (!headers.has(UCP_HEADERS.AGENT)) {
-      logger.warn(
+      console.warn(
         "UCP-Agent header missing (required per spec, but not enforced for POC)",
       );
     }
@@ -567,7 +563,7 @@ export function parseUCPHeaders(
     if (
       !headers.has(UCP_HEADERS.REQUEST_CONTEXT) && !headers.has("Request-Id")
     ) {
-      logger.warn(
+      console.warn(
         "Request-Id/UCP-Request-Context header missing (recommended per spec)",
       );
     }

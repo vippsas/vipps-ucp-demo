@@ -45,9 +45,6 @@ import {
 } from "../infrastructure/sessions.ts";
 import type { VippsEPaymentAmount } from "../types/vipps/epayment.ts";
 import { mapPaymentHandlers } from "../infrastructure/ucp_profile.ts";
-import { Logger } from "@deno-library/logger";
-
-const logger = new Logger();
 const SESSION_EXPIRY_HOURS = 24;
 
 // Default links for checkout responses (required per UCP spec)
@@ -99,7 +96,7 @@ export async function handleCreateCheckoutSession(
   let platformProfileUrl: string | undefined;
 
   if (ucpHeaders.agent) {
-    logger.info(
+    console.log(
       `Checkout request from agent: ${
         ucpHeaders.agent.name ?? "unknown"
       } (${ucpHeaders.agent.profile})`,
@@ -110,9 +107,9 @@ export async function handleCreateCheckoutSession(
     platformWebhookUrl = await discoverPlatformWebhookUrl(platformProfileUrl);
 
     if (platformWebhookUrl) {
-      logger.info(`Platform order webhook URL: ${platformWebhookUrl}`);
+      console.log(`Platform order webhook URL: ${platformWebhookUrl}`);
     } else {
-      logger.warn("No order webhook URL found in platform profile");
+      console.warn("No order webhook URL found in platform profile");
     }
   }
 
@@ -475,7 +472,7 @@ export async function handleUpdateCheckoutSession(
         }),
       );
       session.messages = [...(session.messages ?? []), ...warningMessages];
-      logger.warn(
+      console.warn(
         `Ancillary processing warnings: ${ancillaryResult.errors.join(", ")}`,
       );
     }
@@ -492,7 +489,7 @@ export async function handleUpdateCheckoutSession(
     : 0;
   const total = subtotal + fulfillmentCost;
 
-  logger.info(
+  console.log(
     `Recalculated: subtotal=${subtotal}, tax=${tax}, fulfillment=${fulfillmentCost}, total=${total}`,
   );
 
@@ -666,7 +663,7 @@ export async function handleCancelCheckout(
   const ucpHeaders = parseUCPHeaders(req);
 
   if (ucpHeaders.agent) {
-    logger.info(
+    console.log(
       `Cancel checkout from agent: ${ucpHeaders.agent.name ?? "unknown"}`,
     );
   }
@@ -743,7 +740,7 @@ export async function handleCancelCheckout(
     );
   }
 
-  logger.info(`Session ${sessionId} canceled`);
+  console.log(`Session ${sessionId} canceled`);
 
   return new Response(JSON.stringify(session), {
     status: 200,
@@ -758,7 +755,7 @@ export async function handleCompleteCheckout(
   const ucpHeaders = parseUCPHeaders(req);
 
   if (ucpHeaders.agent) {
-    logger.info(
+    console.log(
       `Complete checkout from agent: ${ucpHeaders.agent.name ?? "unknown"}`,
     );
   }
@@ -955,7 +952,7 @@ export async function handleCompleteCheckout(
   ) {
     startPaymentPolling(session.id, session.payment.vipps_reference).catch(
       (err) => {
-        logger.error(`Background polling failed for ${session.id}:`, err);
+        console.error(`Background polling failed for ${session.id}:`, err);
       },
     );
   }
@@ -1020,14 +1017,14 @@ export async function handleVippsCallback(req: Request): Promise<Response> {
   try {
     callback = await req.json();
   } catch {
-    logger.error("Invalid JSON in callback");
+    console.error("Invalid JSON in callback");
     return new Response(JSON.stringify({ error: "Invalid JSON" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
     });
   }
 
-  logger.info(
+  console.log(
     `Received callback for ${callback.reference}: ${callback.state}`,
   );
 
@@ -1040,7 +1037,7 @@ export async function handleVippsCallback(req: Request): Promise<Response> {
   );
 
   if (!session) {
-    logger.warn(`Session not found for reference: ${callback.reference}`);
+    console.warn(`Session not found for reference: ${callback.reference}`);
     // Return 200 to acknowledge receipt (Vipps expects this)
     return new Response(JSON.stringify({ status: "session_not_found" }), {
       status: 200,
@@ -1050,7 +1047,7 @@ export async function handleVippsCallback(req: Request): Promise<Response> {
 
   // Only process if session is still in complete_in_progress state
   if (session.status !== "complete_in_progress") {
-    logger.info(
+    console.log(
       `Session ${session.id} not in complete_in_progress, skipping`,
     );
     return new Response(JSON.stringify({ status: "already_processed" }), {
@@ -1063,7 +1060,7 @@ export async function handleVippsCallback(req: Request): Promise<Response> {
 
   switch (callback.state) {
     case "AUTHORIZED": {
-      logger.info(`Payment AUTHORIZED for ${session.id}`);
+      console.log(`Payment AUTHORIZED for ${session.id}`);
       session.status = "completed";
       session.payment = {
         ...session.payment,
@@ -1088,7 +1085,7 @@ export async function handleVippsCallback(req: Request): Promise<Response> {
 
     case "ABORTED": {
       // Terminal state: payment rejected
-      logger.info(`Payment ABORTED for ${session.id}`);
+      console.log(`Payment ABORTED for ${session.id}`);
       session.status = "canceled";
       session.payment = {
         ...session.payment,
@@ -1100,7 +1097,7 @@ export async function handleVippsCallback(req: Request): Promise<Response> {
 
     case "EXPIRED": {
       // Terminal state: payment expired
-      logger.info(`Payment EXPIRED for ${session.id}`);
+      console.log(`Payment EXPIRED for ${session.id}`);
       session.status = "canceled";
       session.payment = {
         ...session.payment,
@@ -1112,7 +1109,7 @@ export async function handleVippsCallback(req: Request): Promise<Response> {
 
     case "TERMINATED": {
       // Terminal state: payment cancelled
-      logger.info(`Payment TERMINATED for ${session.id}`);
+      console.log(`Payment TERMINATED for ${session.id}`);
       session.status = "canceled";
       session.payment = {
         ...session.payment,
@@ -1123,7 +1120,7 @@ export async function handleVippsCallback(req: Request): Promise<Response> {
     }
 
     default:
-      logger.warn(`Unhandled state ${callback.state} for ${session.id}`);
+      console.warn(`Unhandled state ${callback.state} for ${session.id}`);
   }
 
   session.updated_at = now.toString();
@@ -1157,7 +1154,7 @@ async function startPaymentPolling(
   sessionId: string,
   vippsReference: string,
 ): Promise<void> {
-  logger.info(`Starting background polling for ${sessionId}`);
+  console.log(`Starting background polling for ${sessionId}`);
 
   // Wait initial delay per Vipps guidelines
   await new Promise((resolve) =>
@@ -1170,13 +1167,13 @@ async function startPaymentPolling(
     const session = sessions.find((s) => s.id === sessionId);
 
     if (!session) {
-      logger.info(`Session ${sessionId} not found, stopping`);
+      console.log(`Session ${sessionId} not found, stopping`);
       return;
     }
 
     // If already processed (by callback), stop polling
     if (session.status !== "complete_in_progress") {
-      logger.info(
+      console.log(
         `Session ${sessionId} already processed (${session.status}), stopping`,
       );
       return;
@@ -1186,7 +1183,7 @@ async function startPaymentPolling(
     const result = await getPaymentStatus(sessionId, vippsReference);
 
     if (!result.success) {
-      logger.warn(
+      console.warn(
         `Failed to get status for ${sessionId}: ${result.error}`,
       );
       // Continue polling despite error
@@ -1197,17 +1194,17 @@ async function startPaymentPolling(
     }
 
     const { state, pspReference } = result.data;
-    logger.info(`Payment ${vippsReference} state: ${state}`);
+    console.log(`Payment ${vippsReference} state: ${state}`);
 
     // Process terminal states
     if (state === "AUTHORIZED") {
-      logger.info(`Payment AUTHORIZED for ${sessionId}`);
+      console.log(`Payment AUTHORIZED for ${sessionId}`);
       await processPaymentAuthorized(sessionId, vippsReference, pspReference);
       return;
     }
 
     if (state === "ABORTED") {
-      logger.info(`Payment ABORTED for ${sessionId}`);
+      console.log(`Payment ABORTED for ${sessionId}`);
       await processPaymentFailed(
         sessionId,
         "rejected",
@@ -1218,7 +1215,7 @@ async function startPaymentPolling(
     }
 
     if (state === "EXPIRED") {
-      logger.info(`Payment EXPIRED for ${sessionId}`);
+      console.log(`Payment EXPIRED for ${sessionId}`);
       await processPaymentFailed(
         sessionId,
         "expired",
@@ -1229,7 +1226,7 @@ async function startPaymentPolling(
     }
 
     if (state === "TERMINATED") {
-      logger.info(`Payment TERMINATED for ${sessionId}`);
+      console.log(`Payment TERMINATED for ${sessionId}`);
       await processPaymentFailed(
         sessionId,
         "cancelled",
@@ -1244,7 +1241,7 @@ async function startPaymentPolling(
   }
 
   // Max attempts reached - mark as timed out
-  logger.info(`Max attempts reached for ${sessionId}`);
+  console.log(`Max attempts reached for ${sessionId}`);
   await processPaymentFailed(
     sessionId,
     "expired",

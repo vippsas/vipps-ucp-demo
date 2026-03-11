@@ -11,9 +11,15 @@ import {
   handleUpdateCheckoutSession,
   handleVippsCallback,
 } from "./routes/checkout.ts";
-import { handleGetUCPProfile } from "./routes/ucp.ts";
 import { handleShippingCallback } from "./routes/shipping.ts";
 
+const { handleGetUCPProfile } = await import("./routes/ucp.ts");
+const { initUCPProfile } = await import("./infrastructure/ucp_profile.ts");
+
+// Initialize UCP profile (loads capabilities from well-known/profile.json)
+await initUCPProfile();
+
+// Initialize signing keys for webhook signatures
 await loadConfig();
 await initSigningKeys();
 
@@ -63,5 +69,5 @@ app.post("/api/vipps/callback", (c) => handleVippsCallback(c.req.raw));
 app.post("/api/shipping/callback", (c) => handleShippingCallback(c.req.raw));
 
 const PORT = 8080;
-console.log(`🏪 UCP Business Service starting on http://localhost:${PORT}`);
+console.log(`UCP Business Service starting on http://localhost:${PORT}`);
 Deno.serve({ port: PORT }, app.fetch);

@@ -11,6 +11,14 @@ import {
 } from "../infrastructure/ucp_headers.ts";
 import { discoverPlatformWebhookUrl } from "../infrastructure/platform_profile.ts";
 import {
+  getUCPResponseMetadata,
+  getUCPVersion,
+} from "../infrastructure/ucp_profile.ts";
+import {
+  initializeAncillaries,
+  updateAncillaries,
+} from "../services/ancillaries-service.ts";
+import {
   clearAccessToken,
   createPayment,
   getPaymentStatus,
@@ -22,10 +30,8 @@ import type {
   Item,
   LineItemResponse,
   Link,
-  PaymentHandler,
   TotalEntry,
   UCPMessage,
-  UCPResponseMetadata,
   UpdateCheckoutSessionRequest,
 } from "../types/ucp/checkout.ts";
 import type {
@@ -38,9 +44,8 @@ import {
   saveSessions,
 } from "../infrastructure/sessions.ts";
 import type { VippsEPaymentAmount } from "../types/vipps/epayment.ts";
-
+import { mapPaymentHandlers } from "../infrastructure/ucp_profile.ts";
 const SESSION_EXPIRY_HOURS = 24;
-const UCP_VERSION = "2026-01-11";
 
 // Default links for checkout responses (required per UCP spec)
 const DEFAULT_LINKS: Link[] = [
@@ -54,22 +59,6 @@ const DEFAULT_LINKS: Link[] = [
   },
 ];
 
-// UCP capabilities for this business
-const UCP_CAPABILITIES: UCPResponseMetadata = {
-  version: UCP_VERSION,
-  capabilities: [
-    {
-      name: "dev.ucp.shopping.checkout",
-      version: UCP_VERSION,
-    },
-    {
-      name: "dev.ucp.shopping.fulfillment",
-      version: UCP_VERSION,
-      extends: "dev.ucp.shopping.checkout",
-    },
-  ],
-};
-
 // Payment timeout for async PUSH_MESSAGE flow (5 minutes)
 const PAYMENT_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -80,34 +69,6 @@ const VIPPS_POLL_INTERVAL_MS = 2000; // Check every 2 seconds
 const VIPPS_POLL_MAX_ATTEMPTS = 150; // Max ~5 minutes of polling
 
 const TAX_RATE = 25; // Norwegian VAT 25%
-
-/** Service capabilities advertised in responses */
-const SERVICE_CAPABILITIES = [
-  { name: "checkout", version: UCP_VERSION },
-  { name: "payment" },
-  { name: "shipping" },
-  { name: "products" },
-];
-
-/** Payment handler matching the /.well-known/ucp profile */
-const PAYMENT_HANDLERS: PaymentHandler[] = [
-  {
-    id: "vippsmobilepay_wallet_handler",
-    name: "com.vippsmobilepay.pay.payment_handler",
-    version: "2026-01-23",
-    spec:
-      "https://vippsmobilepay.com/pay/ucp/2026-01-23/vipps_mp_payment_handler",
-    config_schema:
-      "https://vippsmobilepay.com/pay/ucp/2026-01-23/schemas/wallet_payment_handler.json",
-    instrument_schemas: [
-      "https://vippsmobilepay.com/pay/ucp/2026-01-23/schemas/wallet_payment_instrument.json",
-    ],
-    config: {
-      merchant_serial_number: "168850",
-      environment: "TEST",
-    },
-  },
-];
 
 function jsonError(
   status: number,
@@ -136,7 +97,7 @@ export async function handleCreateCheckoutSession(
 
   if (ucpHeaders.agent) {
     console.log(
-      `📱 Checkout request from agent: ${
+      `Checkout request from agent: ${
         ucpHeaders.agent.name ?? "unknown"
       } (${ucpHeaders.agent.profile})`,
     );
@@ -146,9 +107,9 @@ export async function handleCreateCheckoutSession(
     platformWebhookUrl = await discoverPlatformWebhookUrl(platformProfileUrl);
 
     if (platformWebhookUrl) {
-      console.log(`📬 Platform order webhook URL: ${platformWebhookUrl}`);
+      console.log(`Platform order webhook URL: ${platformWebhookUrl}`);
     } else {
-      console.log(`⚠️ No order webhook URL found in platform profile`);
+      console.warn("No order webhook URL found in platform profile");
     }
   }
 
@@ -178,7 +139,7 @@ export async function handleCreateCheckoutSession(
   }
 
   // Build line items from request data (UCP spec format)
-  const lineItems: LineItemResponse[] = [];
+  let lineItems: LineItemResponse[] = [];
   const currency = body.currency ?? "NOK";
 
   for (let idx = 0; idx < body.line_items.length; idx++) {
@@ -213,6 +174,12 @@ export async function handleCreateCheckoutSession(
     });
   }
 
+  // Initialize ancillaries (applies required ancillaries automatically)
+  const { updatedLineItems, ancillaries } = await initializeAncillaries(
+    lineItems,
+  );
+  lineItems = updatedLineItems;
+
   // Build fulfillment options
   const lineItemIds = lineItems.map((li) => li.id);
   const fulfillmentMethods = await buildFulfillmentMethods(lineItemIds);
@@ -237,14 +204,15 @@ export async function handleCreateCheckoutSession(
   }
   totals.push({ type: "total", amount: total });
 
-  const now = new Date();
-  const expiresAt = new Date(
-    now.getTime() + SESSION_EXPIRY_HOURS * 60 * 60 * 1000,
+  const now = Temporal.Now.instant();
+  const expiresAt = now.add(
+    Temporal.Duration.from({ hours: SESSION_EXPIRY_HOURS }),
   );
 
+  const paymentHandlers = mapPaymentHandlers();
   // Create the UCP session object (spec-compliant format)
   const session: CheckoutSession = {
-    ucp: UCP_CAPABILITIES,
+    ucp: getUCPResponseMetadata(),
     id: generateSessionId(),
     status: "incomplete",
     currency,
@@ -258,16 +226,15 @@ export async function handleCreateCheckoutSession(
       methods: fulfillmentMethods,
       available_methods: availableMethods,
     },
-    payment: {
-      handlers: PAYMENT_HANDLERS,
-    },
-    created_at: now.toISOString(),
-    updated_at: now.toISOString(),
-    expires_at: expiresAt.toISOString(),
+    payment: paymentHandlers ? { handlers: paymentHandlers } : undefined,
+    created_at: now.toString(),
+    updated_at: now.toString(),
+    expires_at: expiresAt.toString(),
     metadata: body.metadata,
     // Store platform webhook URL from UCP-Agent profile for order events
     platform_webhook_url: platformWebhookUrl,
     platform_profile_url: platformProfileUrl,
+    ancillaries: Object.keys(ancillaries).length > 0 ? ancillaries : undefined,
   };
 
   // Save session
@@ -284,11 +251,11 @@ export async function handleCreateCheckoutSession(
   // Add UCP-Capabilities header
   responseHeaders.set(
     UCP_HEADERS.CAPABILITIES,
-    serializeUCPCapabilities(SERVICE_CAPABILITIES),
+    serializeUCPCapabilities(getUCPResponseMetadata().capabilities),
   );
 
   // Add UCP-API-Version header
-  responseHeaders.set(UCP_HEADERS.API_VERSION, UCP_VERSION);
+  responseHeaders.set(UCP_HEADERS.API_VERSION, getUCPVersion());
 
   // Echo back request context with response timestamp
   if (ucpHeaders.requestContext) {
@@ -298,7 +265,7 @@ export async function handleCreateCheckoutSession(
         requestId: ucpHeaders.requestContext.requestId,
         correlationId: ucpHeaders.requestContext.correlationId,
         sessionId: session.id,
-        timestamp: new Date(),
+        timestamp: now,
       }),
     );
   }
@@ -333,7 +300,10 @@ export async function handleGetCheckoutSession(
   // Check if session expired
   if (
     session.expires_at &&
-    new Date(session.expires_at) < new Date() &&
+    Temporal.Instant.compare(
+        Temporal.Instant.from(session.expires_at),
+        Temporal.Now.instant(),
+      ) < 0 &&
     session.status === "incomplete"
   ) {
     session.status = "canceled";
@@ -346,20 +316,18 @@ export async function handleGetCheckoutSession(
     await saveSessions(sessions);
   }
 
-  // Check if payment expired (for complete_in_progress sessions)
+  // Check if payment expired (for complete_in_progress sessions) → terminal state
   if (
     session.status === "complete_in_progress" &&
     session.payment?.expires_at &&
-    new Date(session.payment.expires_at) < new Date()
+    Temporal.Instant.compare(
+        Temporal.Instant.from(session.payment.expires_at),
+        Temporal.Now.instant(),
+      ) < 0
   ) {
-    session.status = "incomplete";
+    session.status = "canceled";
     session.payment.state = "expired";
-    session.messages = [{
-      type: "error",
-      code: "payment_expired",
-      severity: "requires_buyer_input",
-      content: "Payment request expired. Please try again.",
-    }];
+    session.messages = [];
     await saveSessions(sessions);
   }
 
@@ -367,9 +335,9 @@ export async function handleGetCheckoutSession(
   const responseHeaders = new Headers({ "Content-Type": "application/json" });
   responseHeaders.set(
     UCP_HEADERS.CAPABILITIES,
-    serializeUCPCapabilities(SERVICE_CAPABILITIES),
+    serializeUCPCapabilities(getUCPResponseMetadata().capabilities),
   );
-  responseHeaders.set(UCP_HEADERS.API_VERSION, UCP_VERSION);
+  responseHeaders.set(UCP_HEADERS.API_VERSION, getUCPVersion());
 
   if (ucpHeaders.requestContext) {
     responseHeaders.set(
@@ -377,7 +345,7 @@ export async function handleGetCheckoutSession(
       serializeUCPRequestContext({
         requestId: ucpHeaders.requestContext.requestId,
         sessionId: session.id,
-        timestamp: new Date(),
+        timestamp: Temporal.Now.instant(),
       }),
     );
   }
@@ -479,6 +447,37 @@ export async function handleUpdateCheckoutSession(
     }
   }
 
+  // Handle ancillary updates
+  if (body.ancillaries !== undefined) {
+    const ancillaryResult = await updateAncillaries(
+      session,
+      body.ancillaries.items,
+    );
+
+    // Update line items (adds ancillary line items)
+    session.line_items = ancillaryResult.updatedLineItems;
+
+    // Update ancillaries object
+    session.ancillaries = Object.keys(ancillaryResult.ancillaries).length > 0
+      ? ancillaryResult.ancillaries
+      : undefined;
+
+    // Add any ancillary processing errors as warning messages
+    if (ancillaryResult.errors.length > 0) {
+      const warningMessages: UCPMessage[] = ancillaryResult.errors.map(
+        (error) => ({
+          type: "warning" as const,
+          code: "ancillary_processing_warning",
+          content: error,
+        }),
+      );
+      session.messages = [...(session.messages ?? []), ...warningMessages];
+      console.warn(
+        `Ancillary processing warnings: ${ancillaryResult.errors.join(", ")}`,
+      );
+    }
+  }
+
   // Recalculate totals with new fulfillment selection
   const subtotal = session.line_items.reduce((sum, li) => {
     const subtotalEntry = li.totals.find((t) => t.type === "subtotal");
@@ -488,10 +487,10 @@ export async function handleUpdateCheckoutSession(
   const fulfillmentCost = session.fulfillment?.methods
     ? getSelectedFulfillmentCost(session.fulfillment.methods)
     : 0;
-  const total = subtotal + tax + fulfillmentCost;
+  const total = subtotal + fulfillmentCost;
 
   console.log(
-    `[UpdateCheckout] Recalculated: subtotal=${subtotal}, tax=${tax}, fulfillment=${fulfillmentCost}, total=${total}`,
+    `Recalculated: subtotal=${subtotal}, tax=${tax}, fulfillment=${fulfillmentCost}, total=${total}`,
   );
 
   // Build totals array (UCP spec format)
@@ -505,7 +504,7 @@ export async function handleUpdateCheckoutSession(
   newTotals.push({ type: "total", amount: total });
 
   session.totals = newTotals;
-  session.updated_at = new Date().toISOString();
+  session.updated_at = Temporal.Now.instant().toString();
 
   // Update status to ready_for_complete if fulfillment is selected
   if (fulfillmentCost >= 0 && session.status === "incomplete") {
@@ -518,9 +517,9 @@ export async function handleUpdateCheckoutSession(
   const responseHeaders = new Headers({ "Content-Type": "application/json" });
   responseHeaders.set(
     UCP_HEADERS.CAPABILITIES,
-    serializeUCPCapabilities(SERVICE_CAPABILITIES),
+    serializeUCPCapabilities(getUCPResponseMetadata().capabilities),
   );
-  responseHeaders.set(UCP_HEADERS.API_VERSION, UCP_VERSION);
+  responseHeaders.set(UCP_HEADERS.API_VERSION, getUCPVersion());
 
   if (ucpHeaders.requestContext) {
     responseHeaders.set(
@@ -528,7 +527,7 @@ export async function handleUpdateCheckoutSession(
       serializeUCPRequestContext({
         requestId: ucpHeaders.requestContext.requestId,
         sessionId: session.id,
-        timestamp: new Date(),
+        timestamp: Temporal.Now.instant(),
       }),
     );
   }
@@ -665,7 +664,7 @@ export async function handleCancelCheckout(
 
   if (ucpHeaders.agent) {
     console.log(
-      `📱 Cancel checkout from agent: ${ucpHeaders.agent.name ?? "unknown"}`,
+      `Cancel checkout from agent: ${ucpHeaders.agent.name ?? "unknown"}`,
     );
   }
 
@@ -699,9 +698,9 @@ export async function handleCancelCheckout(
     const responseHeaders = new Headers({ "Content-Type": "application/json" });
     responseHeaders.set(
       UCP_HEADERS.CAPABILITIES,
-      serializeUCPCapabilities(SERVICE_CAPABILITIES),
+      serializeUCPCapabilities(getUCPResponseMetadata().capabilities),
     );
-    responseHeaders.set(UCP_HEADERS.API_VERSION, UCP_VERSION);
+    responseHeaders.set(UCP_HEADERS.API_VERSION, getUCPVersion());
 
     return new Response(JSON.stringify(session), {
       status: 200,
@@ -713,7 +712,7 @@ export async function handleCancelCheckout(
   // For now, we just update the session status
 
   session.status = "canceled";
-  session.updated_at = new Date().toISOString();
+  session.updated_at = Temporal.Now.instant().toString();
   session.messages = [{
     type: "info",
     code: "session_canceled",
@@ -726,9 +725,9 @@ export async function handleCancelCheckout(
   const responseHeaders = new Headers({ "Content-Type": "application/json" });
   responseHeaders.set(
     UCP_HEADERS.CAPABILITIES,
-    serializeUCPCapabilities(SERVICE_CAPABILITIES),
+    serializeUCPCapabilities(getUCPResponseMetadata().capabilities),
   );
-  responseHeaders.set(UCP_HEADERS.API_VERSION, UCP_VERSION);
+  responseHeaders.set(UCP_HEADERS.API_VERSION, getUCPVersion());
 
   if (ucpHeaders.requestContext) {
     responseHeaders.set(
@@ -736,12 +735,12 @@ export async function handleCancelCheckout(
       serializeUCPRequestContext({
         requestId: ucpHeaders.requestContext.requestId,
         sessionId: session.id,
-        timestamp: new Date(),
+        timestamp: Temporal.Now.instant(),
       }),
     );
   }
 
-  console.log(`[CancelCheckout] Session ${sessionId} canceled`);
+  console.log(`Session ${sessionId} canceled`);
 
   return new Response(JSON.stringify(session), {
     status: 200,
@@ -757,7 +756,7 @@ export async function handleCompleteCheckout(
 
   if (ucpHeaders.agent) {
     console.log(
-      `📱 Complete checkout from agent: ${ucpHeaders.agent.name ?? "unknown"}`,
+      `Complete checkout from agent: ${ucpHeaders.agent.name ?? "unknown"}`,
     );
   }
 
@@ -830,7 +829,11 @@ export async function handleCompleteCheckout(
 
   if (
     session.status === "canceled" ||
-    (session.expires_at && new Date(session.expires_at) < new Date())
+    (session.expires_at &&
+      Temporal.Instant.compare(
+          Temporal.Instant.from(session.expires_at),
+          Temporal.Now.instant(),
+        ) < 0)
   ) {
     if (session.status !== "canceled") {
       session.status = "canceled";
@@ -892,15 +895,19 @@ export async function handleCompleteCheckout(
   // Payment created successfully with Vipps
   // For PUSH_MESSAGE flow, payment state will be CREATED initially
   // The actual authorization happens asynchronously when user approves in Vipps app
-  const now = new Date();
-  const paymentExpiresAt = new Date(now.getTime() + PAYMENT_TIMEOUT_MS);
+  const now = Temporal.Now.instant();
+  const paymentExpiresAt = now.add(
+    Temporal.Duration.from({ milliseconds: PAYMENT_TIMEOUT_MS }),
+  );
 
   if (paymentResult.data.state === "AUTHORIZED") {
     session.status = "completed";
     session.order = {
       id: `order-${session.id}`,
-      reference: `ORD-${now.getFullYear()}-${session.id.slice(-6)}`,
-      created_at: now.toISOString(),
+      reference: `ORD-${now.toZonedDateTimeISO("UTC").year}-${
+        session.id.slice(-6)
+      }`,
+      created_at: now.toString(),
     };
     session.messages = [{
       type: "info",
@@ -915,7 +922,7 @@ export async function handleCompleteCheckout(
       ...session.payment,
       state: "pending_approval",
       vipps_reference: paymentResult.data.reference,
-      expires_at: paymentExpiresAt.toISOString(),
+      expires_at: paymentExpiresAt.toString(),
     };
     session.messages = [{
       type: "info",
@@ -925,7 +932,7 @@ export async function handleCompleteCheckout(
     }];
   }
 
-  session.updated_at = now.toISOString();
+  session.updated_at = now.toString();
 
   // Store Vipps reference in metadata for debugging/tracking
   session.metadata = {
@@ -945,10 +952,7 @@ export async function handleCompleteCheckout(
   ) {
     startPaymentPolling(session.id, session.payment.vipps_reference).catch(
       (err) => {
-        console.error(
-          `[Checkout] Background polling failed for ${session.id}:`,
-          err,
-        );
+        console.error(`Background polling failed for ${session.id}:`, err);
       },
     );
   }
@@ -957,9 +961,9 @@ export async function handleCompleteCheckout(
   const responseHeaders = new Headers({ "Content-Type": "application/json" });
   responseHeaders.set(
     UCP_HEADERS.CAPABILITIES,
-    serializeUCPCapabilities(SERVICE_CAPABILITIES),
+    serializeUCPCapabilities(getUCPResponseMetadata().capabilities),
   );
-  responseHeaders.set(UCP_HEADERS.API_VERSION, UCP_VERSION);
+  responseHeaders.set(UCP_HEADERS.API_VERSION, getUCPVersion());
 
   if (ucpHeaders.requestContext) {
     responseHeaders.set(
@@ -967,7 +971,7 @@ export async function handleCompleteCheckout(
       serializeUCPRequestContext({
         requestId: ucpHeaders.requestContext.requestId,
         sessionId: session.id,
-        timestamp: new Date(),
+        timestamp: Temporal.Now.instant(),
       }),
     );
   }
@@ -1013,7 +1017,7 @@ export async function handleVippsCallback(req: Request): Promise<Response> {
   try {
     callback = await req.json();
   } catch {
-    console.error("[VippsCallback] Invalid JSON in callback");
+    console.error("Invalid JSON in callback");
     return new Response(JSON.stringify({ error: "Invalid JSON" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
@@ -1021,7 +1025,7 @@ export async function handleVippsCallback(req: Request): Promise<Response> {
   }
 
   console.log(
-    `[VippsCallback] Received callback for ${callback.reference}: ${callback.state}`,
+    `Received callback for ${callback.reference}: ${callback.state}`,
   );
 
   // Find the checkout session by Vipps reference
@@ -1033,9 +1037,7 @@ export async function handleVippsCallback(req: Request): Promise<Response> {
   );
 
   if (!session) {
-    console.warn(
-      `[VippsCallback] Session not found for reference: ${callback.reference}`,
-    );
+    console.warn(`Session not found for reference: ${callback.reference}`);
     // Return 200 to acknowledge receipt (Vipps expects this)
     return new Response(JSON.stringify({ status: "session_not_found" }), {
       status: 200,
@@ -1046,7 +1048,7 @@ export async function handleVippsCallback(req: Request): Promise<Response> {
   // Only process if session is still in complete_in_progress state
   if (session.status !== "complete_in_progress") {
     console.log(
-      `[VippsCallback] Session ${session.id} not in complete_in_progress, skipping`,
+      `Session ${session.id} not in complete_in_progress, skipping`,
     );
     return new Response(JSON.stringify({ status: "already_processed" }), {
       status: 200,
@@ -1054,11 +1056,11 @@ export async function handleVippsCallback(req: Request): Promise<Response> {
     });
   }
 
-  const now = new Date();
+  const now = Temporal.Now.instant();
 
   switch (callback.state) {
     case "AUTHORIZED": {
-      console.log(`[VippsCallback] Payment AUTHORIZED for ${session.id}`);
+      console.log(`Payment AUTHORIZED for ${session.id}`);
       session.status = "completed";
       session.payment = {
         ...session.payment,
@@ -1068,8 +1070,10 @@ export async function handleVippsCallback(req: Request): Promise<Response> {
       };
       session.order = {
         id: `order-${session.id}`,
-        reference: `ORD-${now.getFullYear()}-${session.id.slice(-6)}`,
-        created_at: now.toISOString(),
+        reference: `ORD-${now.toZonedDateTimeISO("UTC").year}-${
+          session.id.slice(-6)
+        }`,
+        created_at: now.toString(),
       };
       session.messages = [{
         type: "info",
@@ -1080,64 +1084,46 @@ export async function handleVippsCallback(req: Request): Promise<Response> {
     }
 
     case "ABORTED": {
-      // User rejected the payment
-      console.log(`[VippsCallback] Payment ABORTED for ${session.id}`);
-      session.status = "incomplete";
+      // Terminal state: payment rejected
+      console.log(`Payment ABORTED for ${session.id}`);
+      session.status = "canceled";
       session.payment = {
         ...session.payment,
         state: "rejected",
       };
-      session.messages = [{
-        type: "error",
-        code: "payment_rejected",
-        severity: "requires_buyer_input",
-        content:
-          "Payment was declined. Please try again or choose a different payment method.",
-      }];
+      session.messages = [];
       break;
     }
 
     case "EXPIRED": {
-      // Payment request expired
-      console.log(`[VippsCallback] Payment EXPIRED for ${session.id}`);
-      session.status = "incomplete";
+      // Terminal state: payment expired
+      console.log(`Payment EXPIRED for ${session.id}`);
+      session.status = "canceled";
       session.payment = {
         ...session.payment,
         state: "expired",
       };
-      session.messages = [{
-        type: "error",
-        code: "payment_expired",
-        severity: "requires_buyer_input",
-        content: "Payment request expired. Please try again.",
-      }];
+      session.messages = [];
       break;
     }
 
     case "TERMINATED": {
-      // Payment was cancelled
-      console.log(`[VippsCallback] Payment TERMINATED for ${session.id}`);
-      session.status = "incomplete";
+      // Terminal state: payment cancelled
+      console.log(`Payment TERMINATED for ${session.id}`);
+      session.status = "canceled";
       session.payment = {
         ...session.payment,
         state: "cancelled",
       };
-      session.messages = [{
-        type: "error",
-        code: "payment_cancelled",
-        severity: "requires_buyer_input",
-        content: "Payment was cancelled. Please try again.",
-      }];
+      session.messages = [];
       break;
     }
 
     default:
-      console.log(
-        `[VippsCallback] Unhandled state ${callback.state} for ${session.id}`,
-      );
+      console.warn(`Unhandled state ${callback.state} for ${session.id}`);
   }
 
-  session.updated_at = now.toISOString();
+  session.updated_at = now.toString();
   await saveSessions(sessions);
 
   // Clear cached access token
@@ -1168,7 +1154,7 @@ async function startPaymentPolling(
   sessionId: string,
   vippsReference: string,
 ): Promise<void> {
-  console.log(`[VippsPolling] Starting background polling for ${sessionId}`);
+  console.log(`Starting background polling for ${sessionId}`);
 
   // Wait initial delay per Vipps guidelines
   await new Promise((resolve) =>
@@ -1181,14 +1167,14 @@ async function startPaymentPolling(
     const session = sessions.find((s) => s.id === sessionId);
 
     if (!session) {
-      console.log(`[VippsPolling] Session ${sessionId} not found, stopping`);
+      console.log(`Session ${sessionId} not found, stopping`);
       return;
     }
 
     // If already processed (by callback), stop polling
     if (session.status !== "complete_in_progress") {
       console.log(
-        `[VippsPolling] Session ${sessionId} already processed (${session.status}), stopping`,
+        `Session ${sessionId} already processed (${session.status}), stopping`,
       );
       return;
     }
@@ -1198,7 +1184,7 @@ async function startPaymentPolling(
 
     if (!result.success) {
       console.warn(
-        `[VippsPolling] Failed to get status for ${sessionId}: ${result.error}`,
+        `Failed to get status for ${sessionId}: ${result.error}`,
       );
       // Continue polling despite error
       await new Promise((resolve) =>
@@ -1208,17 +1194,17 @@ async function startPaymentPolling(
     }
 
     const { state, pspReference } = result.data;
-    console.log(`[VippsPolling] Payment ${vippsReference} state: ${state}`);
+    console.log(`Payment ${vippsReference} state: ${state}`);
 
     // Process terminal states
     if (state === "AUTHORIZED") {
-      console.log(`[VippsPolling] Payment AUTHORIZED for ${sessionId}`);
+      console.log(`Payment AUTHORIZED for ${sessionId}`);
       await processPaymentAuthorized(sessionId, vippsReference, pspReference);
       return;
     }
 
     if (state === "ABORTED") {
-      console.log(`[VippsPolling] Payment ABORTED for ${sessionId}`);
+      console.log(`Payment ABORTED for ${sessionId}`);
       await processPaymentFailed(
         sessionId,
         "rejected",
@@ -1229,7 +1215,7 @@ async function startPaymentPolling(
     }
 
     if (state === "EXPIRED") {
-      console.log(`[VippsPolling] Payment EXPIRED for ${sessionId}`);
+      console.log(`Payment EXPIRED for ${sessionId}`);
       await processPaymentFailed(
         sessionId,
         "expired",
@@ -1240,7 +1226,7 @@ async function startPaymentPolling(
     }
 
     if (state === "TERMINATED") {
-      console.log(`[VippsPolling] Payment TERMINATED for ${sessionId}`);
+      console.log(`Payment TERMINATED for ${sessionId}`);
       await processPaymentFailed(
         sessionId,
         "cancelled",
@@ -1255,7 +1241,7 @@ async function startPaymentPolling(
   }
 
   // Max attempts reached - mark as timed out
-  console.log(`[VippsPolling] Max attempts reached for ${sessionId}`);
+  console.log(`Max attempts reached for ${sessionId}`);
   await processPaymentFailed(
     sessionId,
     "expired",
@@ -1279,7 +1265,7 @@ async function processPaymentAuthorized(
     return; // Already processed
   }
 
-  const now = new Date();
+  const now = Temporal.Now.instant();
 
   session.status = "completed";
   session.payment = {
@@ -1290,15 +1276,17 @@ async function processPaymentAuthorized(
   };
   session.order = {
     id: `order-${session.id}`,
-    reference: `ORD-${now.getFullYear()}-${session.id.slice(-6)}`,
-    created_at: now.toISOString(),
+    reference: `ORD-${now.toZonedDateTimeISO("UTC").year}-${
+      session.id.slice(-6)
+    }`,
+    created_at: now.toString(),
   };
   session.messages = [{
     type: "info",
     code: "payment_approved",
     content: "Payment approved. Your order has been placed.",
   }];
-  session.updated_at = now.toISOString();
+  session.updated_at = now.toString();
 
   await saveSessions(sessions);
   clearAccessToken(sessionId);
@@ -1310,8 +1298,8 @@ async function processPaymentAuthorized(
 async function processPaymentFailed(
   sessionId: string,
   paymentState: "rejected" | "expired" | "cancelled",
-  errorCode: string,
-  errorMessage: string,
+  _errorCode: string,
+  _errorMessage: string,
 ): Promise<void> {
   const sessions = await loadSessions();
   const session = sessions.find((s) => s.id === sessionId);
@@ -1320,18 +1308,14 @@ async function processPaymentFailed(
     return; // Already processed
   }
 
-  session.status = "incomplete";
+  // ABORTED, EXPIRED, TERMINATED are terminal states → checkout session canceled, no error message
+  session.status = "canceled";
   session.payment = {
     ...session.payment,
     state: paymentState,
   };
-  session.messages = [{
-    type: "error",
-    code: errorCode,
-    severity: "requires_buyer_input",
-    content: errorMessage,
-  }];
-  session.updated_at = new Date().toISOString();
+  session.messages = [];
+  session.updated_at = Temporal.Now.instant().toString();
 
   await saveSessions(sessions);
   clearAccessToken(sessionId);

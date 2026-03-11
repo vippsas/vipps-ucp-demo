@@ -55,12 +55,12 @@ export async function fetchPlatformProfile(
   profileUrl: string,
 ): Promise<PlatformProfile | null> {
   const cached = profileCache.get(profileUrl);
-  if (cached && cached.expiresAt > Date.now()) {
+  if (cached && cached.expiresAt > Temporal.Now.instant().epochMilliseconds) {
     return cached.profile;
   }
 
   try {
-    console.log(`[PLATFORM] Fetching profile from: ${profileUrl}`);
+    console.log(`Fetching profile from: ${profileUrl}`);
 
     const response = await fetch(profileUrl, {
       headers: { Accept: "application/json" },
@@ -68,7 +68,7 @@ export async function fetchPlatformProfile(
 
     if (!response.ok) {
       console.warn(
-        `[PLATFORM] Failed to fetch profile: ${response.status} ${response.statusText}`,
+        `Failed to fetch profile: ${response.status} ${response.statusText}`,
       );
       return null;
     }
@@ -78,16 +78,14 @@ export async function fetchPlatformProfile(
 
     profileCache.set(profileUrl, {
       profile,
-      expiresAt: Date.now() + ttl,
+      expiresAt: Temporal.Now.instant().epochMilliseconds + ttl,
     });
 
-    console.log(
-      `[PLATFORM] Profile fetched and cached (ttl: ${ttl / 1000}s)`,
-    );
+    console.log(`Profile fetched and cached (ttl: ${ttl / 1000}s)`);
     return profile;
   } catch (error) {
     console.warn(
-      `[PLATFORM] Error fetching profile: ${
+      `Error fetching profile: ${
         error instanceof Error ? error.message : error
       }`,
     );

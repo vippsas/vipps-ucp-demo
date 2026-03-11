@@ -47,24 +47,16 @@ export async function handleShippingCallback(
     );
   }
 
-  const trackingNumber = body.tracking_number ?? `PKG${Date.now()}`;
+  const trackingNumber = body.tracking_number ??
+    `PKG${Temporal.Now.instant().epochMilliseconds}`;
   const trackingUrl = body.tracking_url ??
     `https://tracking.postnord.com/${trackingNumber}`;
   const carrier = body.carrier ?? "PostNord";
   const status = body.status ?? "delivered";
 
-  console.log("\n" + "=".repeat(60));
-  console.log("📬 SHIPPING PROVIDER CALLBACK RECEIVED");
-  console.log("=".repeat(60));
-  console.log(`Order ID:        ${orderId}`);
-  console.log(`Checkout ID:     ${checkoutId}`);
-  console.log(`Carrier:         ${carrier}`);
-  console.log(`Status:          ${status}`);
-  console.log(`Tracking #:      ${trackingNumber}`);
   console.log(
-    `Platform URL:    ${platformWebhookUrl} (from UCP-Agent profile)`,
+    `Shipping callback: orderId=${orderId} checkoutId=${checkoutId} carrier=${carrier} status=${status} tracking=${trackingNumber}`,
   );
-  console.log("=".repeat(60));
 
   const orderEvent = createShippedOrderEvent(
     orderId,
@@ -75,15 +67,12 @@ export async function handleShippingCallback(
     status,
   );
 
-  console.log(
-    `\n🔔 Sending order webhook to platform: ${platformWebhookUrl}`,
-  );
+  console.log(`Sending order webhook to platform: ${platformWebhookUrl}`);
 
   const response = await sendOrderWebhook(platformWebhookUrl, orderEvent);
   const responseText = await response.text();
 
-  console.log(`📨 Platform response: ${response.status}`);
-  console.log("=".repeat(60) + "\n");
+  console.log(`Platform response: ${response.status}`);
 
   return Response.json({
     success: response.ok,

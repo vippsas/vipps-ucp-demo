@@ -34,9 +34,7 @@ export async function loadConfig(): Promise<void> {
   ];
   const missing = required.filter((key) => !config![key]?.trim());
   if (missing.length > 0) {
-    console.error(
-      "Missing or empty required env: " + missing.join(", "),
-    );
+    console.error("Missing or empty required env: " + missing.join(", "));
     Deno.exit(1);
   }
 }

@@ -10,7 +10,6 @@
 
 import { canonicalizeToBytes } from "@std/json/unstable-canonicalize";
 import type { JsonValue } from "@std/json/types";
-
 let privateKey: CryptoKey;
 let keyId: string;
 

@@ -12,8 +12,8 @@ import {
   date,
   integer,
   isItem,
-  item,
   type Item,
+  item,
   parseDictionary,
   parseItem,
   parseList,
@@ -23,7 +23,6 @@ import {
   string,
   token,
 } from "@std/http/unstable-structured-fields";
-
 // =============================================================================
 // UCP-Agent Header
 // =============================================================================
@@ -224,7 +223,7 @@ export interface UCPAllowance {
   /** Currency code (ISO 4217, lowercase) */
   currency: string;
   /** Expiration timestamp */
-  expiresAt: Date;
+  expiresAt: Temporal.Instant;
   /** Optional merchant identifier */
   merchantId?: string;
   /** Optional checkout session identifier */
@@ -239,7 +238,7 @@ export interface UCPAllowance {
  * const header = serializeUCPAllowance({
  *   maxAmount: 100000,
  *   currency: "nok",
- *   expiresAt: new Date("2025-02-01T00:00:00Z"),
+ *   expiresAt: Temporal.Instant.from("2025-02-01T00:00:00Z"),
  *   merchantId: "demo_business_001",
  * });
  * // Result: max-amount=100000;currency="nok", expires=@1738368000, merchant="demo_business_001"
@@ -253,7 +252,7 @@ export function serializeUCPAllowance(allowance: UCPAllowance): string {
         ["currency", string(allowance.currency)],
       ]),
     ],
-    ["expires", item(date(allowance.expiresAt))],
+    ["expires", item(date(new Date(allowance.expiresAt.epochMilliseconds)))],
   ];
 
   if (allowance.merchantId !== undefined) {
@@ -296,10 +295,15 @@ export function parseUCPAllowance(header: string): UCPAllowance | null {
       return null;
     }
 
+    const expiresVal = expiresItem.value.value;
     const result: UCPAllowance = {
       maxAmount: maxAmountItem.value.value,
       currency: currencyParam.value,
-      expiresAt: expiresItem.value.value,
+      expiresAt: typeof expiresVal === "number"
+        ? Temporal.Instant.fromEpochMilliseconds(expiresVal * 1000)
+        : Temporal.Instant.fromEpochMilliseconds(
+          (expiresVal as Date).getTime(),
+        ),
     };
 
     const merchantItem = dict.get("merchant");
@@ -335,7 +339,7 @@ export interface UCPIdempotency {
   /** The idempotency key */
   key: string;
   /** When the key was created */
-  createdAt?: Date;
+  createdAt?: Temporal.Instant;
   /** Time-to-live in seconds */
   ttl?: number;
 }
@@ -347,7 +351,7 @@ export interface UCPIdempotency {
  * ```ts
  * const header = serializeUCPIdempotency({
  *   key: "req_abc123",
- *   createdAt: new Date(),
+ *   createdAt: Temporal.Now.instant(),
  *   ttl: 3600,
  * });
  * // Result: "req_abc123";created=@1705708800;ttl=3600
@@ -357,7 +361,10 @@ export function serializeUCPIdempotency(idempotency: UCPIdempotency): string {
   const parameters: [string, BareItem][] = [];
 
   if (idempotency.createdAt !== undefined) {
-    parameters.push(["created", date(idempotency.createdAt)]);
+    parameters.push([
+      "created",
+      date(new Date(idempotency.createdAt.epochMilliseconds)),
+    ]);
   }
   if (idempotency.ttl !== undefined) {
     parameters.push(["ttl", integer(idempotency.ttl)]);
@@ -385,7 +392,10 @@ export function parseUCPIdempotency(header: string): UCPIdempotency | null {
 
     const createdParam = parsed.parameters.get("created");
     if (createdParam && createdParam.type === "date") {
-      result.createdAt = createdParam.value;
+      const v = createdParam.value;
+      result.createdAt = typeof v === "number"
+        ? Temporal.Instant.fromEpochMilliseconds(v * 1000)
+        : Temporal.Instant.fromEpochMilliseconds((v as Date).getTime());
     }
 
     const ttlParam = parsed.parameters.get("ttl");
@@ -414,7 +424,7 @@ export interface UCPRequestContext {
   /** Session ID for user session tracking */
   sessionId?: string;
   /** Timestamp when the request was initiated */
-  timestamp?: Date;
+  timestamp?: Temporal.Instant;
 }
 
 /**
@@ -432,7 +442,10 @@ export function serializeUCPRequestContext(context: UCPRequestContext): string {
     entries.push(["session-id", item(string(context.sessionId))]);
   }
   if (context.timestamp !== undefined) {
-    entries.push(["timestamp", item(date(context.timestamp))]);
+    entries.push([
+      "timestamp",
+      item(date(new Date(context.timestamp.epochMilliseconds))),
+    ]);
   }
 
   return serializeDictionary(new Map(entries));
@@ -480,7 +493,10 @@ export function parseUCPRequestContext(
       timestampItem && isItem(timestampItem) &&
       timestampItem.value.type === "date"
     ) {
-      result.timestamp = timestampItem.value.value;
+      const v = timestampItem.value.value;
+      result.timestamp = typeof v === "number"
+        ? Temporal.Instant.fromEpochMilliseconds(v * 1000)
+        : Temporal.Instant.fromEpochMilliseconds((v as Date).getTime());
     }
 
     return result;
@@ -540,7 +556,7 @@ export function parseUCPHeaders(
   if (logWarnings) {
     if (!headers.has(UCP_HEADERS.AGENT)) {
       console.warn(
-        "⚠️  UCP-Agent header missing (required per spec, but not enforced for POC)",
+        "UCP-Agent header missing (required per spec, but not enforced for POC)",
       );
     }
     // Request-Id is typically in the Request-Context header
@@ -548,7 +564,7 @@ export function parseUCPHeaders(
       !headers.has(UCP_HEADERS.REQUEST_CONTEXT) && !headers.has("Request-Id")
     ) {
       console.warn(
-        "⚠️  Request-Id/UCP-Request-Context header missing (recommended per spec)",
+        "Request-Id/UCP-Request-Context header missing (recommended per spec)",
       );
     }
   }

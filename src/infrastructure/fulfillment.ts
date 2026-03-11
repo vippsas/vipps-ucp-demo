@@ -14,18 +14,23 @@ import {
 
 const opts: FulfillmentOptionsStore = fulfillmentOptions;
 
-const toISO = (d: Date): string => d.toISOString();
-const futureDate = (days: number, hour = 18): string => {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  d.setHours(hour, 0, 0, 0);
-  return toISO(d);
-};
-const hoursFromNow = (hours: number): string => {
-  const d = new Date();
-  d.setHours(d.getHours() + hours);
-  return toISO(d);
-};
+function futureDate(days: number, hour = 18): string {
+  const now = Temporal.Now.plainDateTimeISO("UTC");
+  const future = now.add({ days }).with({
+    hour,
+    minute: 0,
+    second: 0,
+    millisecond: 0,
+    microsecond: 0,
+    nanosecond: 0,
+  });
+  return future.toZonedDateTime("UTC").toInstant().toString();
+}
+function hoursFromNow(hours: number): string {
+  return Temporal.Now.instant()
+    .add(Temporal.Duration.from({ hours }))
+    .toString();
+}
 
 function transformShippingOption(
   opt: ShippingOption,

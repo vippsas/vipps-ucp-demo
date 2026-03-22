@@ -1,17 +1,14 @@
 /**
- * UCP Signing Keys for webhook signature generation.
+ * UCP signing keys for merchant webhooks (RFC 9421 HTTP Message Signatures).
  *
- * Generates an ECDSA P-256 key pair at startup for signing webhooks.
- * Payloads are canonicalized with JCS (RFC 8785) before signing per the
- * UCP AP2 Mandates specification.
+ * Generates an ECDSA P-256 key pair at startup. The public JWK is exposed via
+ * `/.well-known/ucp` so platforms can verify order callbacks.
  *
  * @module
  */
 
-import { canonicalizeToBytes } from "@std/json/unstable-canonicalize";
-import type { JsonValue } from "@std/json/types";
-let privateKey: CryptoKey;
-let keyId: string;
+let privateKey!: CryptoKey;
+let publicJwkForProfile!: JsonWebKey & { kid: string };
 
 const KEY_ID = "dev-signing-key-1";
 
@@ -23,41 +20,28 @@ export async function initSigningKeys(): Promise<void> {
   );
 
   privateKey = keyPair.privateKey;
-  keyId = KEY_ID;
 
-  console.log(`Signing keys initialized (kid: ${keyId})`);
+  const pub = await crypto.subtle.exportKey("jwk", keyPair.publicKey) as
+    & JsonWebKey
+    & { kid?: string };
+  pub.kid = KEY_ID;
+  pub.alg = "ES256";
+  pub.use = "sig";
+  publicJwkForProfile = pub as JsonWebKey & { kid: string };
+
+  console.log(`Signing keys initialized (kid: ${KEY_ID})`);
 }
 
 export function getSigningKeyId(): string {
-  return keyId;
+  return KEY_ID;
 }
 
-/**
- * Create a detached JWS signature (RFC 7515 Appendix F) over a
- * JCS-canonicalized (RFC 8785) payload.
- *
- * Returns `header..signature` (empty payload section).
- * The receiver reconstructs the signing input by canonicalizing the
- * request body themselves.
- */
-export async function createDetachedSignature(
-  payload: JsonValue,
-): Promise<string> {
-  const canonicalBytes = canonicalizeToBytes(payload);
+/** Private key for RFC 9421 `signMessage` on outbound webhooks. */
+export function getSigningPrivateKey(): CryptoKey {
+  return privateKey;
+}
 
-  const encoder = new TextEncoder();
-  const b64url = { alphabet: "base64url" as const, omitPadding: true };
-  const header = { alg: "ES256", kid: keyId };
-  const headerB64 = encoder.encode(JSON.stringify(header)).toBase64(b64url);
-  const payloadB64 = canonicalBytes.toBase64(b64url);
-  const signingInput = `${headerB64}.${payloadB64}`;
-
-  const signature = await crypto.subtle.sign(
-    { name: "ECDSA", hash: "SHA-256" },
-    privateKey,
-    encoder.encode(signingInput),
-  );
-
-  const signatureB64 = new Uint8Array(signature).toBase64(b64url);
-  return `${headerB64}..${signatureB64}`;
+/** Public JWK advertised in `signing_keys` on the merchant UCP profile. */
+export function getSigningPublicJwkForProfile(): JsonWebKey & { kid: string } {
+  return publicJwkForProfile;
 }

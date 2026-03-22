@@ -3,6 +3,8 @@ import { cors } from "hono/cors";
 import { loadConfig } from "./infrastructure/config.ts";
 import { UCP_HEADERS } from "./infrastructure/ucp_headers.ts";
 import { initSigningKeys } from "./infrastructure/signing_keys.ts";
+import { loadSessions, saveSessions } from "./infrastructure/sessions.ts";
+import { registerVippsPaymentHandler } from "./infrastructure/payment_handlers/vipps/2026-01-23/payment_handler.ts";
 import {
   handleCancelCheckout,
   handleCompleteCheckout,
@@ -12,12 +14,19 @@ import {
   handleVippsCallback,
 } from "./routes/checkout.ts";
 import { handleShippingCallback } from "./routes/shipping.ts";
+import {
+  handleListPlacedOrders,
+  handleOrdersDashboard,
+} from "./routes/orders_dashboard.ts";
 
 const { handleGetUCPProfile } = await import("./routes/ucp.ts");
 const { initUCPProfile } = await import("./infrastructure/ucp_profile.ts");
 
 // Initialize UCP profile (loads capabilities from well-known/profile.json)
 await initUCPProfile();
+
+// Register payment handlers (in-memory session access)
+registerVippsPaymentHandler({ loadSessions, saveSessions });
 
 // Initialize signing keys for webhook signatures
 await loadConfig();
@@ -45,6 +54,9 @@ app.use(
 
 app.get("/health", (c) => c.json({ ok: true, data: "ok" }));
 
+app.get("/", () => handleOrdersDashboard());
+app.get("/api/demo/orders", () => handleListPlacedOrders());
+
 app.get("/.well-known/ucp", (c) => handleGetUCPProfile(c.req.raw));
 
 app.post("/checkout_sessions", (c) => handleCreateCheckoutSession(c.req.raw));
@@ -65,7 +77,7 @@ app.post(
   (c) => handleCancelCheckout(c.req.raw, c.req.param("id")),
 );
 
-app.post("/api/vipps/callback", (c) => handleVippsCallback(c.req.raw));
+app.post("/api/payment/vipps/callback", (c) => handleVippsCallback(c.req.raw));
 app.post("/api/shipping/callback", (c) => handleShippingCallback(c.req.raw));
 
 const PORT = 8080;

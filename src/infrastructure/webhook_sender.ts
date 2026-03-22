@@ -8,9 +8,21 @@
 
 import { canonicalize } from "@std/json/unstable-canonicalize";
 import type { JsonValue } from "@std/json/types";
-import { createDetachedSignature, getSigningKeyId } from "./signing_keys.ts";
+import { createContentDigestHeader } from "./content_digest.ts";
+import { signMessage } from "./rfc9421/message_signatures.ts";
+import { getSigningKeyId, getSigningPrivateKey } from "./signing_keys.ts";
+import { getUCPVersion } from "./ucp_profile.ts";
+import { serializeUCPAgent, UCP_HEADERS } from "./ucp_headers.ts";
 
-const BUSINESS_ORIGIN = "http://localhost:8080";
+/** Public origin of this merchant; platform uses UCP-Agent profile URL to fetch signing keys. */
+function businessOrigin(): string {
+  return Deno.env.get("UCP_BUSINESS_ORIGIN") ?? "http://localhost:8080";
+}
+
+function businessProfileUrl(): string {
+  const base = businessOrigin().replace(/\/$/, "");
+  return `${base}/.well-known/ucp`;
+}
 
 /**
  * Send a signed webhook to a platform's webhook URL.
@@ -24,22 +36,49 @@ export async function sendOrderWebhook(
   payload: JsonValue,
 ): Promise<Response> {
   const body = canonicalize(payload);
+  const contentDigest = await createContentDigestHeader(body);
 
-  const signature = await createDetachedSignature(payload);
+  const origin = businessOrigin();
+  const ucpAgent = serializeUCPAgent({
+    profile: businessProfileUrl(),
+    name: "vipps-ucp-demo-merchant",
+    version: 1,
+  });
 
   console.log(
-    `Sending order event to ${webhookUrl} origin=${BUSINESS_ORIGIN} kid=${getSigningKeyId()}`,
+    `Sending order event to ${webhookUrl} origin=${origin} kid=${getSigningKeyId()} UCP-Agent profile=${businessProfileUrl()}`,
   );
 
-  const response = await fetch(webhookUrl, {
+  const unsigned = new Request(webhookUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Origin": BUSINESS_ORIGIN,
-      "Request-Signature": signature,
+      "Content-Digest": contentDigest,
+      "Origin": origin,
+      [UCP_HEADERS.AGENT]: ucpAgent,
+      [UCP_HEADERS.API_VERSION]: getUCPVersion(),
     },
     body,
   });
+
+  const signed = await signMessage({
+    message: unsigned,
+    params: {
+      components: [
+        "@method",
+        "@authority",
+        "@path",
+        "content-digest",
+        "content-type",
+      ],
+      keyId: getSigningKeyId(),
+      algorithm: "ecdsa-p256-sha256",
+      created: Math.floor(Date.now() / 1000),
+    },
+    key: getSigningPrivateKey(),
+  });
+
+  const response = await fetch(signed);
 
   console.log(`Response status: ${response.status}`);
 
@@ -140,7 +179,7 @@ export function createShippedOrderEvent(
     },
     id: orderId,
     checkout_id: checkoutId,
-    permalink_url: `http://localhost:8080/orders/${orderId}`,
+    permalink_url: `${businessOrigin()}/orders/${orderId}`,
     event_id: eventId,
     created_time: nowStr,
     line_items: [

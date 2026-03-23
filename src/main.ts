@@ -14,6 +14,10 @@ import {
   handleVippsCallback,
 } from "./routes/checkout.ts";
 import { handleShippingCallback } from "./routes/shipping.ts";
+import {
+  handleListPlacedOrders,
+  handleOrdersDashboard,
+} from "./routes/orders_dashboard.ts";
 
 const { handleGetUCPProfile } = await import("./routes/ucp.ts");
 const { initUCPProfile } = await import("./infrastructure/ucp_profile.ts");
@@ -50,6 +54,8 @@ app.use(
 
 app.get("/health", (c) => c.json({ ok: true, data: "ok" }));
 
+app.get("/", () => handleOrdersDashboard());
+app.get("/api/demo/orders", () => handleListPlacedOrders());
 
 app.get("/.well-known/ucp", (c) => handleGetUCPProfile(c.req.raw));
 

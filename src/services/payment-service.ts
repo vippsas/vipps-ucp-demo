@@ -205,9 +205,8 @@ export async function processPayment(
     session.status = "completed";
     session.order = {
       id: `order-${session.id}`,
-      reference: `ORD-${now.toZonedDateTimeISO("UTC").year}-${
-        session.id.slice(-6)
-      }`,
+      reference: `ORD-${now.toZonedDateTimeISO("UTC").year}-${session.id.slice(-6)
+        }`,
       created_at: now.toString(),
     };
     session.messages = [{
@@ -422,9 +421,8 @@ export async function processPaymentAuthorized(
   };
   session.order = {
     id: `order-${session.id}`,
-    reference: `ORD-${now.toZonedDateTimeISO("UTC").year}-${
-      session.id.slice(-6)
-    }`,
+    reference: `ORD-${now.toZonedDateTimeISO("UTC").year}-${session.id.slice(-6)
+      }`,
     created_at: now.toString(),
   };
   session.messages = [{
@@ -526,9 +524,8 @@ export async function processVippsCallback(
       };
       session.order = {
         id: `order-${session.id}`,
-        reference: `ORD-${now.toZonedDateTimeISO("UTC").year}-${
-          session.id.slice(-6)
-        }`,
+        reference: `ORD-${now.toZonedDateTimeISO("UTC").year}-${session.id.slice(-6)
+          }`,
         created_at: now.toString(),
       };
       session.messages = [{

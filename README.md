@@ -51,7 +51,9 @@ curl http://localhost:8080/
 
 | Endpoint                          | Method | Description                             |
 | --------------------------------- | ------ | --------------------------------------- |
-| `/`                               | GET    | Health check                            |
+| `/`                               | GET    | Orders dashboard (demo UI)              |
+| `/health`                         | GET    | Liveness JSON                           |
+| `/api/demo/orders`                | GET    | Placed orders JSON (demo)               |
 | `/.well-known/ucp`                | GET    | UCP profile discovery                   |
 | `/products`                       | GET    | List available products                 |
 | `/products/:sku`                  | GET    | Get product details                     |
@@ -60,7 +62,8 @@ curl http://localhost:8080/
 | `/checkout_sessions/:id`          | PUT    | Update session (fulfillment, addresses) |
 | `/checkout_sessions/:id/complete` | POST   | Complete checkout with payment          |
 | `/checkout_sessions/:id/cancel`   | POST   | Cancel a checkout session               |
-| `/api/vipps/callback`             | POST   | Vipps payment webhook                   |
+| `/api/payment/vipps/callback`     | POST   | Optional manual/test hook (not Vipps Webhooks API) |
+| `/api/shipping/callback`          | POST   | Demo: merchant → platform order webhook |
 
 ## Usage Examples
 
@@ -169,6 +172,10 @@ VIPPS_EMBEDDED_CHECKOUT=false
 ```
 src/
 ├── main.ts                          # Entry point & HTTP router
+├── libs/
+│   └── std_candidates/              # RFC 9421 primitives (align with vipps-tobi)
+├── features/
+│   └── orders-dashboard/            # Demo orders UI + list JSON (presentation slice)
 ├── types/
 │   ├── merchant.ts                  # Demo merchant types (Product, etc.)
 │   ├── ucp/
@@ -182,7 +189,9 @@ src/
 │       └── auth.ts                  # Vipps Access Token API types
 ├── routes/
 │   ├── checkout.ts                  # Checkout session handlers
+│   ├── orders_dashboard.ts          # Thin adapters → features/orders-dashboard
 │   ├── products.ts                  # Product catalog handlers
+│   ├── shipping.ts                  # Demo shipping → platform webhook
 │   └── ucp.ts                       # UCP profile endpoint
 ├── services/
 │   ├── checkout-service.ts          # Session management & business logic
@@ -295,8 +304,24 @@ The service implements the Vipps PUSH_MESSAGE payment flow:
 3. **Complete Checkout** - Platform submits payment with MSISDN
 4. **Push Notification** - Vipps sends push to user's phone
 5. **User Approves** - User opens Vipps app and approves payment
-6. **Callback/Polling** - Service receives payment status via webhook or polling
+6. **Status updates (this demo)** - Session is advanced using **polling only**
+   (`GET /epayment/v1/payments/{reference}` in the background). See
+   [Vipps polling guidelines](https://developer.vippsmobilepay.com/docs/knowledge-base/polling-guidelines/).
 7. **Order Created** - Session transitions to `completed` with order info
+
+### Vipps ePayment: webhooks vs this demo
+
+For **production**, Vipps expects you to use **both** the
+[Webhooks API](https://developer.vippsmobilepay.com/docs/APIs/webhooks-api/events/#epayment-api-event-types)
+(for real-time ePayment events) **and** polling as a fallback — see the
+[ePayment checklist](https://developer.vippsmobilepay.com/docs/APIs/epayment-api/checklist/#implement-both-webhooks-and-polling).
+
+**This repository deliberately does not register or verify Vipps webhooks** (HMAC
+registration and inbound verification add operational and security surface that
+we skip to keep the demo small). **`POST /api/payment/vipps/callback` is not**
+what Vipps calls in production; it is an optional **manual / test** endpoint
+that accepts a JSON body shaped like a payment update. **Do not copy that as a
+substitute for the official Webhooks API.**
 
 ## Security Considerations
 
@@ -304,7 +329,9 @@ This is a **demonstration service**. For production use:
 
 - Implement proper authentication/authorization
 - Use a production database (not JSON files)
-- Validate webhook signatures
+- For Vipps: register and authenticate [Webhooks API](https://developer.vippsmobilepay.com/docs/APIs/webhooks-api/request-authentication/)
+  deliveries (HMAC); keep polling as fallback per Vipps guidance
+- For UCP platform order events: validate signatures as required by your integration
 - Implement rate limiting
 - Use HTTPS with proper certificates
 - Secure environment variables

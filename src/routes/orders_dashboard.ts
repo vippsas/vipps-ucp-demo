@@ -12,7 +12,8 @@ function orderSummary(s: CheckoutSession) {
     buyer: s.buyer,
     shipping_address: s.shipping_address,
     platform_webhook_configured: Boolean(s.platform_webhook_url),
-    merchant_fulfillment: s.merchant_fulfillment ?? null,
+    /** Demo-only: last successful Order Event webhook POST (see CheckoutSession.demo). */
+    last_order_event_webhook: s.demo?.last_order_event_webhook ?? null,
   };
 }
 
@@ -182,8 +183,8 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       }
       root.innerHTML = orders.map(function (o) {
         var ord = o.order;
-        var mf = o.merchant_fulfillment;
-        var shipped = !!mf;
+        var wh = o.last_order_event_webhook;
+        var shipped = !!wh;
         var lines = (o.line_items || []).map(function (li) {
           var title = li.item && li.item.title ? li.item.title : li.id;
           var unit = li.item && li.item.price != null ? fmtMoney(li.item.price, o.currency) : "—";
@@ -203,7 +204,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
           ? ""
           : "<p class='hint'>No platform order webhook was stored for this session (checkout without UCP-Agent <code>dev.ucp.shopping.order</code>).</p>";
         var fulfillBlock = shipped
-          ? "<div class='meta'>Notified at " + escapeHtml(mf.notified_at) + " · <a href='" + escapeAttr(mf.tracking_url) + "' target='_blank' rel='noopener'>" + escapeHtml(mf.carrier) + " · " + escapeHtml(mf.tracking_number) + "</a> · event <code>" + escapeHtml(mf.event_id) + "</code></div>"
+          ? "<div class='meta'>Order event sent at " + escapeHtml(wh.notified_at) + " · <a href='" + escapeAttr(wh.tracking_url) + "' target='_blank' rel='noopener'>" + escapeHtml(wh.carrier) + " · " + escapeHtml(wh.tracking_number) + "</a> · event <code>" + escapeHtml(wh.event_id) + "</code></div>"
           : "";
         return (
           "<section class='card'><h2>" +

@@ -132,3 +132,22 @@ PR8 (Vipps polling / docs) orthogonal; best after PR4 or alongside small doc PRs
 - **PR 7:** `src/features/orders-dashboard/` contains dashboard HTML/JSON logic; `src/routes/orders_dashboard.ts` re-exports handlers only.
 
 Remaining slices (PR 2–6, 8) may already overlap with current `main`—use this file when splitting **future** PRs or extracting commits.
+
+---
+
+## GitHub review stack (`vipps-ucp-demo`)
+
+Branches were generated with `scripts/stack_prs.sh` (from `origin/main`). **PR 4 and PR 5 from the plan are one PR** (branch `pr/04-pr4-pr5-payment-handler-and-checkout`) because removing `vipps_epayment_client.ts` must land together with the checkout migration.
+
+| Step | Branch | Pull request |
+| ---- | ------ | ------------ |
+| 1 | `pr/01-pr1-libs-std-candidates` | [#18](https://github.com/vippsas/vipps-ucp-demo/pull/18) → `main` |
+| 2 | `pr/02-pr2-signing-keys-ucp-profile` | [#19](https://github.com/vippsas/vipps-ucp-demo/pull/19) |
+| 3 | `pr/03-pr3-rfc9421-outbound-webhooks` | [#20](https://github.com/vippsas/vipps-ucp-demo/pull/20) |
+| 4–5 | `pr/04-pr4-pr5-payment-handler-and-checkout` | [#21](https://github.com/vippsas/vipps-ucp-demo/pull/21) |
+| 6 | `pr/05-pr6-shipping-fulfillment-persistence` | [#22](https://github.com/vippsas/vipps-ucp-demo/pull/22) |
+| 7 | `pr/06-pr7-orders-dashboard` | [#23](https://github.com/vippsas/vipps-ucp-demo/pull/23) |
+| 8a | `pr/07-pr8a-readme-and-pr-plan` | [#24](https://github.com/vippsas/vipps-ucp-demo/pull/24) |
+| 8b | `pr/08-pr8b-orders-feature-slice-and-comments` | [#25](https://github.com/vippsas/vipps-ucp-demo/pull/25) |
+
+After **PR1** merges to `main`, rebase or retarget downstream PRs onto `main` (or merge strictly in order). **PR2** uses a short-lived hybrid `signing_keys.ts` (JWS + JWK) so `main` still builds before **PR3** removes `createDetachedSignature`.

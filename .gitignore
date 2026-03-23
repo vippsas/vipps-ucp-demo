@@ -1,2 +1,5 @@
 .env
 src/data/sessions.json
+
+node_modules/
+static/

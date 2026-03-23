@@ -1,3 +1,4 @@
+import { resolve } from "@std/path";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { loadConfig } from "./infrastructure/config.ts";
@@ -17,7 +18,7 @@ import { handleShippingCallback } from "./routes/shipping.ts";
 import {
   handleListPlacedOrders,
   handleOrdersDashboard,
-} from "./routes/orders_dashboard.ts";
+} from "./features/orders_dashboard/server/mod.ts";
 
 const { handleGetUCPProfile } = await import("./routes/ucp.ts");
 const { initUCPProfile } = await import("./infrastructure/ucp_profile.ts");
@@ -53,6 +54,36 @@ app.use(
 );
 
 app.get("/health", (c) => c.json({ ok: true, data: "ok" }));
+
+app.get("/static/*", async (c) => {
+  const rel = c.req.path.replace(/^\/static\/?/, "");
+  if (!rel || rel.includes("..")) {
+    return c.text("Not found", 404);
+  }
+  const base = resolve(Deno.cwd(), "static");
+  const filePath = resolve(base, rel);
+  if (!filePath.startsWith(base)) {
+    return c.text("Forbidden", 403);
+  }
+  let file: Uint8Array;
+  try {
+    file = await Deno.readFile(filePath);
+  } catch {
+    return c.notFound();
+  }
+  const ext = rel.split(".").pop() ?? "";
+  const contentType = ext === "css"
+    ? "text/css"
+    : ext === "js"
+    ? "application/javascript"
+    : "application/octet-stream";
+  return new Response(new Blob([file as BlobPart]), {
+    headers: {
+      "Content-Type": `${contentType}; charset=utf-8`,
+      "Cache-Control": "no-store",
+    },
+  });
+});
 
 app.get("/", () => handleOrdersDashboard());
 app.get("/api/demo/orders", () => handleListPlacedOrders());

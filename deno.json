@@ -1,14 +1,39 @@
 {
   "unstable": ["temporal"],
+  "nodeModulesDir": "auto",
   "tasks": {
     "start": "deno run --allow-net --allow-read --allow-write --allow-env src/main.ts",
-    "dev": "deno run --watch --allow-net --allow-read --allow-write --allow-env src/main.ts"
+    "dev": "deno run --watch --allow-net --allow-read --allow-write --allow-env src/main.ts",
+    "build:orders-dashboard": "deno run -A scripts/build_orders_dashboard.ts"
   },
   "imports": {
     "@std/async": "jsr:@std/async@1.2.0",
     "@std/dotenv": "jsr:@std/dotenv@^0.225.6",
     "@std/http": "jsr:@std/http@^1.0.25",
     "@std/json": "jsr:@std/json@1.0.3",
-    "hono": "jsr:@hono/hono@4.12.7"
+    "@std/path": "jsr:@std/path@^1.0.8",
+    "@types/react": "npm:@types/react@^19.2.14",
+    "@types/react-dom": "npm:@types/react-dom@^19.2.3",
+    "esbuild": "npm:esbuild@0.25.0",
+    "hono": "jsr:@hono/hono@4.12.7",
+    "react": "npm:react@^19.0.0",
+    "react/jsx-runtime": "npm:react@^19/jsx-runtime",
+    "react/jsx-dev-runtime": "npm:react@^19/jsx-dev-runtime",
+    "react-dom/client": "npm:react-dom@^19/client"
+  },
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+    "lib": [
+      "deno.ns",
+      "deno.unstable",
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "types": ["npm:@types/react", "npm:@types/react-dom"]
+  },
+  "lint": {
+    "exclude": ["node_modules", "static"]
   }
 }

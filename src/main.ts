@@ -50,7 +50,6 @@ app.use(
 
 app.get("/health", (c) => c.json({ ok: true, data: "ok" }));
 
-
 app.get("/.well-known/ucp", (c) => handleGetUCPProfile(c.req.raw));
 
 app.post("/checkout_sessions", (c) => handleCreateCheckoutSession(c.req.raw));

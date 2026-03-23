@@ -18,11 +18,11 @@ import type {
   TotalEntry,
   UCPMessage,
   UCPMessageSeverity,
-} from "../types/ucp/checkout.ts";
+} from "../../../../types/ucp/checkout.ts";
 import type {
   VippsAccessTokenError,
   VippsAccessTokenResponse,
-} from "../types/vipps/auth.ts";
+} from "../../../../types/vipps/auth.ts";
 import type {
   VippsCreatePaymentRequest,
   VippsCreatePaymentResponse,
@@ -32,7 +32,7 @@ import type {
   VippsEPaymentOrderLine,
   VippsEPaymentReceipt,
   VippsEPaymentTokenCustomer,
-} from "../types/vipps/epayment.ts";
+} from "../../../../types/vipps/epayment.ts";
 
 import { getConfig } from "./config.ts";
 // ============================================
@@ -490,6 +490,11 @@ function createShippingOrderLine(
     totalAmountExcludingTax: amountExcludingTax,
     totalTaxAmount: taxAmount,
     taxPercentage,
+    unitInfo: {
+      unitPrice: shippingAmount,
+      quantity: "1",
+      quantityUnit: "PCS",
+    },
     isShipping: true,
   };
 }

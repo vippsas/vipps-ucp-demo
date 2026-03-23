@@ -113,6 +113,26 @@ export interface Order {
   created_at: string; // RFC 3339
 }
 
+/**
+ * @internal Demo-only persistence. **Not** part of the UCP Checkout resource.
+ * Used after a successful [Order Event webhook](https://ucp.dev/latest/specification/order/#events)
+ * POST (Order capability); fulfillment lives on the **Order** entity, not on checkout.
+ */
+export interface InternalOrderEventWebhookReceipt {
+  notified_at: string;
+  event_id: string;
+  http_status: number;
+  fulfillment_event_type: string;
+  tracking_number: string;
+  tracking_url: string;
+  carrier: string;
+}
+
+/** @internal Fields this demo stores on the session object but that are outside UCP Checkout. */
+export interface CheckoutSessionDemoPersistence {
+  last_order_event_webhook?: InternalOrderEventWebhookReceipt;
+}
+
 // UCP Messages - https://ucp.dev/specification/checkout/#error-handling
 
 export type UCPMessageSeverity =
@@ -184,6 +204,11 @@ export interface CheckoutSession {
   payment?: CheckoutPaymentInfo;
   messages?: UCPMessage[];
   order?: Order;
+  /**
+   * @internal Optional demo persistence (audit / dedupe). **Not** defined by UCP Checkout.
+   * Order fulfillment and events belong to the Order capability payload, not checkout.
+   */
+  demo?: CheckoutSessionDemoPersistence;
   expires_at?: string; // RFC 3339
   continue_url?: string;
   created_at?: string; // RFC 3339

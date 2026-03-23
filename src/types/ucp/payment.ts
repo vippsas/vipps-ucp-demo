@@ -24,3 +24,12 @@ export interface PaymentData {
 export interface CompleteCheckoutRequest {
   payment: PaymentData;
 }
+
+export interface PaymentHandler {
+  id: string;
+  name: string;
+  validatePaymentData?: (data: PaymentData) => boolean;
+  initiatePayment?: (
+    data: PaymentData,
+  ) => Promise<{ success: boolean; message?: string }>;
+}

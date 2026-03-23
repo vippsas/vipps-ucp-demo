@@ -8,9 +8,22 @@
 
 import { canonicalize } from "@std/json/unstable-canonicalize";
 import type { JsonValue } from "@std/json/types";
-import { createDetachedSignature, getSigningKeyId } from "./signing_keys.ts";
+import type { CheckoutSession, TotalEntry } from "../types/ucp/checkout.ts";
+import { createContentDigestHeader } from "./content_digest.ts";
+import { signMessage } from "../libs/std_candidates/message_signatures.ts";
+import { getSigningKeyId, getSigningPrivateKey } from "./signing_keys.ts";
+import { getCapability, getUCPVersion } from "./ucp_profile.ts";
+import { serializeUCPAgent, UCP_HEADERS } from "./ucp_headers.ts";
 
-const BUSINESS_ORIGIN = "http://localhost:8080";
+/** Public origin of this merchant; platform uses UCP-Agent profile URL to fetch signing keys. */
+function businessOrigin(): string {
+  return Deno.env.get("UCP_BUSINESS_ORIGIN") ?? "http://localhost:8080";
+}
+
+function businessProfileUrl(): string {
+  const base = businessOrigin().replace(/\/$/, "");
+  return `${base}/.well-known/ucp`;
+}
 
 /**
  * Send a signed webhook to a platform's webhook URL.
@@ -24,22 +37,49 @@ export async function sendOrderWebhook(
   payload: JsonValue,
 ): Promise<Response> {
   const body = canonicalize(payload);
+  const contentDigest = await createContentDigestHeader(body);
 
-  const signature = await createDetachedSignature(payload);
+  const origin = businessOrigin();
+  const ucpAgent = serializeUCPAgent({
+    profile: businessProfileUrl(),
+    name: "vipps-ucp-demo-merchant",
+    version: 1,
+  });
 
   console.log(
-    `Sending order event to ${webhookUrl} origin=${BUSINESS_ORIGIN} kid=${getSigningKeyId()}`,
+    `Sending order event to ${webhookUrl} origin=${origin} kid=${getSigningKeyId()} UCP-Agent profile=${businessProfileUrl()}`,
   );
 
-  const response = await fetch(webhookUrl, {
+  const unsigned = new Request(webhookUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Origin": BUSINESS_ORIGIN,
-      "Request-Signature": signature,
+      "Content-Digest": contentDigest,
+      "Origin": origin,
+      [UCP_HEADERS.AGENT]: ucpAgent,
+      [UCP_HEADERS.API_VERSION]: getUCPVersion(),
     },
     body,
   });
+
+  const signed = await signMessage({
+    message: unsigned,
+    params: {
+      components: [
+        "@method",
+        "@authority",
+        "@path",
+        "content-digest",
+        "content-type",
+      ],
+      keyId: getSigningKeyId(),
+      algorithm: "ecdsa-p256-sha256",
+      created: Math.floor(Date.now() / 1000),
+    },
+    key: getSigningPrivateKey(),
+  });
+
+  const response = await fetch(signed);
 
   console.log(`Response status: ${response.status}`);
 
@@ -47,14 +87,95 @@ export async function sendOrderWebhook(
 }
 
 /**
- * Create a fulfilled/shipped order event.
+ * `ucp` block for [Order Event webhook](https://ucp.dev/latest/specification/order/#order-event-webhook) payloads.
+ */
+function orderEventUcpMetadata(): JsonValue {
+  const version = getUCPVersion();
+  const orderCap = getCapability("dev.ucp.shopping.order");
+  const orderVersion = orderCap?.version ?? version;
+  return {
+    version,
+    capabilities: {
+      "dev.ucp.shopping.order": [{ version: orderVersion }],
+    },
+  };
+}
+
+/** Map checkout totals to Order capability [Total](https://ucp.dev/latest/specification/order/#total) entries. */
+function mapOrderTotals(totals: TotalEntry[]): JsonValue[] {
+  return totals.map((t) => {
+    if (t.type === "shipping") {
+      return {
+        type: "fulfillment",
+        display_text: t.description ?? "Shipping",
+        amount: t.amount,
+      };
+    }
+    const row: Record<string, JsonValue> = { type: t.type, amount: t.amount };
+    if (t.description) row.display_text = t.description;
+    return row;
+  });
+}
+
+function mapLineItemTotals(totals: TotalEntry[]): JsonValue[] {
+  return totals.map((t) => {
+    const row: Record<string, JsonValue> = { type: t.type, amount: t.amount };
+    if (t.description) row.display_text = t.description;
+    return row;
+  });
+}
+
+function lineRefs(
+  session: CheckoutSession,
+): { id: string; quantity: number }[] {
+  return session.line_items.map((li) => ({ id: li.id, quantity: li.quantity }));
+}
+
+function fulfilledCount(
+  lineQty: number,
+  status: "shipped" | "in_transit" | "delivered",
+): number {
+  if (status === "delivered") return lineQty;
+  return 0;
+}
+
+function lineItemOrderStatus(
+  total: number,
+  fulfilled: number,
+): "processing" | "partial" | "fulfilled" {
+  if (fulfilled >= total) return "fulfilled";
+  if (fulfilled > 0) return "partial";
+  return "processing";
+}
+
+function expectationDestination(session: CheckoutSession): JsonValue {
+  const a = session.shipping_address;
+  if (!a) {
+    return {
+      street_address: "Unknown",
+      postal_code: "0000",
+      address_locality: "Unknown",
+      address_country: session.currency === "NOK" ? "NO" : "XX",
+    };
+  }
+  const parts = a.name.trim().split(/\s+/);
+  const dest: Record<string, string> = {
+    street_address: a.line_two ? `${a.line_one}, ${a.line_two}` : a.line_one,
+    address_locality: a.city,
+    address_region: a.state,
+    address_country: a.country,
+    postal_code: a.postal_code,
+  };
+  if (parts.length > 0) dest.first_name = parts[0]!;
+  if (parts.length > 1) dest.last_name = parts.slice(1).join(" ");
+  return dest;
+}
+
+/**
+ * Build a full [Order Event](https://ucp.dev/latest/specification/order/#order-event-webhook) body
+ * from the checkout session (immutable line items + totals) plus a new fulfillment snapshot.
  *
- * @param orderId - The order ID
- * @param checkoutId - The checkout session ID this order originated from
- * @param trackingNumber - Shipping tracking number
- * @param trackingUrl - URL to track the shipment
- * @param carrier - Shipping carrier (e.g., "PostNord", "Bring")
- * @param status - Fulfillment status: "shipped", "in_transit", or "delivered"
+ * @see https://ucp.dev/latest/specification/order/#fulfillment-event — `occurred_at`, `line_items[].id`
  */
 /** Minimal shape exposed to callers; the full payload is a {@link JsonValue}. */
 export interface OrderEvent {
@@ -63,8 +184,8 @@ export interface OrderEvent {
 }
 
 export function createShippedOrderEvent(
+  session: CheckoutSession,
   orderId: string,
-  checkoutId: string,
   trackingNumber: string,
   trackingUrl: string,
   carrier: string = "PostNord",
@@ -73,118 +194,98 @@ export function createShippedOrderEvent(
   const now = Temporal.Now.instant();
   const nowStr = now.toString();
   const eventId = `evt-${crypto.randomUUID()}`;
+  const refs = lineRefs(session);
 
-  // Build fulfillment events based on status
-  const fulfillmentEvents = [
-    {
-      id: "fe-1",
-      type: "processing",
-      line_items: [{ line_item_id: "li-1", quantity: 1 }],
-      created_time: now.add(
-        Temporal.Duration.from({ milliseconds: -172800000 }),
-      ).toString(), // 2 days ago
-    },
-    {
-      id: "fe-2",
-      type: "shipped",
-      line_items: [{ line_item_id: "li-1", quantity: 1 }],
-      tracking_number: trackingNumber,
-      tracking_url: trackingUrl,
-      carrier,
-      created_time: now.add(Temporal.Duration.from({ milliseconds: -86400000 }))
-        .toString(), // 1 day ago
-    },
-  ];
+  const fulfillmentEvents: JsonValue[] = [];
+  const t0 = now.subtract(Temporal.Duration.from({ hours: 48 })).toString();
+  fulfillmentEvents.push({
+    id: `fe-proc-${crypto.randomUUID().slice(0, 8)}`,
+    occurred_at: t0,
+    type: "processing",
+    line_items: refs.map((r) => ({ id: r.id, quantity: r.quantity })),
+    description: "Order prepared for shipment",
+  });
 
-  // Add in_transit event if status is in_transit or delivered
+  const withTracking = (
+    type: string,
+    at: string,
+    idPrefix: string,
+    extra?: Record<string, JsonValue>,
+  ): Record<string, JsonValue> => ({
+    id: `${idPrefix}-${crypto.randomUUID().slice(0, 8)}`,
+    occurred_at: at,
+    type,
+    line_items: refs.map((r) => ({ id: r.id, quantity: r.quantity })),
+    tracking_number: trackingNumber,
+    tracking_url: trackingUrl,
+    carrier,
+    ...extra,
+  });
+
+  const tShip = now.subtract(Temporal.Duration.from({ hours: 24 })).toString();
+  if (
+    status === "shipped" || status === "in_transit" || status === "delivered"
+  ) {
+    fulfillmentEvents.push(withTracking("shipped", tShip, "fe-ship"));
+  }
   if (status === "in_transit" || status === "delivered") {
-    fulfillmentEvents.push({
-      id: "fe-3",
-      type: "in_transit",
-      line_items: [{ line_item_id: "li-1", quantity: 1 }],
-      tracking_number: trackingNumber,
-      tracking_url: trackingUrl,
-      carrier,
-      created_time: now.add(Temporal.Duration.from({ milliseconds: -43200000 }))
-        .toString(), // 12 hours ago
-    });
+    fulfillmentEvents.push(
+      withTracking(
+        "in_transit",
+        now.subtract(Temporal.Duration.from({ hours: 12 })).toString(),
+        "fe-tr",
+      ),
+    );
   }
-
-  // Add delivered event if status is delivered
   if (status === "delivered") {
-    fulfillmentEvents.push({
-      id: "fe-4",
-      type: "delivered",
-      line_items: [{ line_item_id: "li-1", quantity: 1 }],
-      tracking_number: trackingNumber,
-      tracking_url: trackingUrl,
-      carrier,
-      created_time: nowStr,
-    });
+    fulfillmentEvents.push(
+      withTracking("delivered", nowStr, "fe-del", { description: "Delivered" }),
+    );
   }
 
-  // Determine line item status based on fulfillment status
-  const lineItemStatus = status === "delivered" ? "fulfilled" : "partial";
-  const quantityFulfilled = status === "delivered" ? 1 : 0;
-
-  // Update expectation description based on status
   const expectationDescription = status === "delivered"
-    ? "✅ Delivered!"
+    ? "Delivered"
     : status === "in_transit"
-    ? `📦 In transit with ${carrier}`
-    : `🚚 Shipped via ${carrier}`;
+    ? `In transit with ${carrier}`
+    : `Shipped via ${carrier}`;
+
+  const orderLineItems = session.line_items.map((li) => {
+    const fulfilled = fulfilledCount(li.quantity, status);
+    return {
+      id: li.id,
+      item: {
+        id: li.item.id,
+        title: li.item.title,
+        price: li.item.price,
+        ...(li.item.image_url ? { image_url: li.item.image_url } : {}),
+      },
+      quantity: { total: li.quantity, fulfilled },
+      totals: mapLineItemTotals(li.totals),
+      status: lineItemOrderStatus(li.quantity, fulfilled),
+    };
+  });
 
   return {
-    ucp: {
-      version: "2026-01-11",
-    },
+    ucp: orderEventUcpMetadata(),
     id: orderId,
-    checkout_id: checkoutId,
-    permalink_url: `http://localhost:8080/orders/${orderId}`,
+    checkout_id: session.id,
+    permalink_url: `${businessOrigin()}/orders/${orderId}`,
     event_id: eventId,
     created_time: nowStr,
-    line_items: [
-      {
-        id: "li-1",
-        item: {
-          id: "PROD-001",
-          title: "Test Product",
-          price: 9900,
-        },
-        quantity: {
-          total: 1,
-          fulfilled: quantityFulfilled,
-        },
-        totals: [
-          { type: "subtotal", amount: 9900 },
-          { type: "tax", amount: 2475 },
-          { type: "total", amount: 12375 },
-        ],
-        status: lineItemStatus,
-      },
-    ],
+    line_items: orderLineItems,
     fulfillment: {
       expectations: [
         {
-          id: "exp-1",
-          line_items: [{ line_item_id: "li-1", quantity: 1 }],
+          id: `exp-${session.id.slice(-8)}`,
+          line_items: refs.map((r) => ({ id: r.id, quantity: r.quantity })),
           method_type: "shipping",
-          destination: {
-            street_address: "Test Street 1",
-            postal_code: "0150",
-            address_locality: "Oslo",
-            address_country: "NO",
-          },
+          destination: expectationDestination(session),
           description: expectationDescription,
+          fulfillable_on: "now",
         },
       ],
       events: fulfillmentEvents,
     },
-    totals: [
-      { type: "subtotal", amount: 9900 },
-      { type: "tax", amount: 2475 },
-      { type: "fulfillment", display_text: "Shipping", amount: 0 },
-      { type: "total", amount: 12375 },
-    ],
+    totals: mapOrderTotals(session.totals),
   };
 }

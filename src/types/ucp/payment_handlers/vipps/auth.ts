@@ -1,12 +1,9 @@
-/**
- * Vipps Access Token API types.
- * @see https://developer.vippsmobilepay.com/api/access-token/
- */
+// Vipps Access Token API - https://developer.vippsmobilepay.com/api/access-token/
 
 export interface VippsAccessTokenResponse {
   access_token: string;
+  token_type: "Bearer";
   expires_in: number;
-  token_type?: string;
 }
 
 export interface VippsAccessTokenError {

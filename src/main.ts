@@ -3,6 +3,8 @@ import { cors } from "hono/cors";
 import { loadConfig } from "./infrastructure/config.ts";
 import { UCP_HEADERS } from "./infrastructure/ucp_headers.ts";
 import { initSigningKeys } from "./infrastructure/signing_keys.ts";
+import { loadSessions, saveSessions } from "./infrastructure/sessions.ts";
+import { registerVippsPaymentHandler } from "./infrastructure/payment_handlers/vipps/2026-01-23/payment_handler.ts";
 import {
   handleCancelCheckout,
   handleCompleteCheckout,
@@ -18,6 +20,9 @@ const { initUCPProfile } = await import("./infrastructure/ucp_profile.ts");
 
 // Initialize UCP profile (loads capabilities from well-known/profile.json)
 await initUCPProfile();
+
+// Register payment handlers (in-memory session access)
+registerVippsPaymentHandler({ loadSessions, saveSessions });
 
 // Initialize signing keys for webhook signatures
 await loadConfig();
@@ -65,7 +70,7 @@ app.post(
   (c) => handleCancelCheckout(c.req.raw, c.req.param("id")),
 );
 
-app.post("/api/vipps/callback", (c) => handleVippsCallback(c.req.raw));
+app.post("/api/payment/vipps/callback", (c) => handleVippsCallback(c.req.raw));
 app.post("/api/shipping/callback", (c) => handleShippingCallback(c.req.raw));
 
 const PORT = 8080;

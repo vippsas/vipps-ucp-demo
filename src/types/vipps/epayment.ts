@@ -1,27 +1,20 @@
-// Vipps ePayment API - https://developer.vippsmobilepay.com/api/epayment/
+/**
+ * Vipps ePayment API types.
+ * @see https://developer.vippsmobilepay.com/api/epayment/
+ */
 
 export interface VippsEPaymentAmount {
   currency: "NOK" | "DKK" | "EUR";
-  value: number; // minor units
+  value: number;
 }
 
 export interface VippsEPaymentMSISDNCustomer {
-  phoneNumber: string; // MSISDN format
+  phoneNumber: string;
 }
 
 export interface VippsEPaymentTokenCustomer {
   customerToken: string;
 }
-
-export interface VippsEPaymentMethod {
-  type: "WALLET" | "CARD";
-}
-
-export type VippsEPaymentUserFlow =
-  | "PUSH_MESSAGE"
-  | "NATIVE_REDIRECT"
-  | "WEB_REDIRECT"
-  | "QR";
 
 export interface VippsEPaymentOrderLine {
   name: string;
@@ -30,67 +23,42 @@ export interface VippsEPaymentOrderLine {
   totalAmountExcludingTax: number;
   totalTaxAmount: number;
   taxPercentage: number;
-  unitInfo?: { unitPrice: number; quantity: string; quantityUnit: string };
-  discount?: number;
-  productUrl?: string;
-  isReturn?: boolean;
+  unitInfo: {
+    unitPrice: number;
+    quantity: string;
+    quantityUnit: string;
+  };
   isShipping?: boolean;
-}
-
-export interface VippsEPaymentBottomLine {
-  currency: VippsEPaymentAmount["currency"];
-  tipAmount?: number;
-  totalAmount?: number;
-  totalTax?: number;
-  totalDiscount?: number;
-  shippingAmount?: number;
-  giftCardAmount?: number;
-  terminalId?: string;
 }
 
 export interface VippsEPaymentReceipt {
   orderLines: VippsEPaymentOrderLine[];
-  bottomLine: VippsEPaymentBottomLine;
+  bottomLine: {
+    currency: string;
+    totalAmount: number;
+    totalTax: number;
+    shippingAmount?: number;
+  };
 }
 
 export interface VippsCreatePaymentRequest {
   amount: VippsEPaymentAmount;
-  customer: VippsEPaymentTokenCustomer | VippsEPaymentMSISDNCustomer;
-  paymentMethod: VippsEPaymentMethod;
+  customer: VippsEPaymentMSISDNCustomer | VippsEPaymentTokenCustomer;
+  paymentMethod: { type: string };
   reference: string;
-  userFlow: VippsEPaymentUserFlow;
+  userFlow: string;
   paymentDescription?: string;
-  returnUrl?: string;
   receipt?: VippsEPaymentReceipt;
 }
 
-export type VippsEPaymentState =
-  | "CREATED"
-  | "ABORTED"
-  | "EXPIRED"
-  | "AUTHORIZED"
-  | "TERMINATED";
-
-export interface VippsEPaymentAggregate {
-  authorizedAmount?: VippsEPaymentAmount;
-  cancelledAmount?: VippsEPaymentAmount;
-  capturedAmount?: VippsEPaymentAmount;
-  refundedAmount?: VippsEPaymentAmount;
-}
-
 export interface VippsCreatePaymentResponse {
-  redirectUrl?: string;
   reference: string;
-  state: VippsEPaymentState;
-  aggregate?: VippsEPaymentAggregate;
+  state: string;
   pspReference?: string;
 }
 
 export interface VippsEPaymentError {
-  type?: string;
   title?: string;
-  status?: number;
   detail?: string;
-  instance?: string;
-  extraDetails?: Array<{ name?: string; reason?: string }>;
+  [key: string]: unknown;
 }

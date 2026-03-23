@@ -1,14 +1,11 @@
 /**
- * UCP signing keys: JWS for legacy webhooks + JWK on profile for RFC 9421 (PR3).
+ * UCP signing keys for merchant webhooks (RFC 9421 HTTP Message Signatures).
  *
- * PR2 adds signing_keys to /.well-known/ucp. PR3 switches outbound webhooks
- * to RFC 9421 and drops createDetachedSignature.
+ * Generates an ECDSA P-256 key pair at startup. The public JWK is exposed via
+ * `/.well-known/ucp` so platforms can verify order callbacks.
  *
  * @module
  */
-
-import { canonicalizeToBytes } from "@std/json/unstable-canonicalize";
-import type { JsonValue } from "@std/json/types";
 
 let privateKey!: CryptoKey;
 let publicJwkForProfile!: JsonWebKey & { kid: string };
@@ -39,37 +36,12 @@ export function getSigningKeyId(): string {
   return KEY_ID;
 }
 
-/** Private key for RFC 9421 signMessage (used from PR3). */
+/** Private key for RFC 9421 `signMessage` on outbound webhooks. */
 export function getSigningPrivateKey(): CryptoKey {
   return privateKey;
 }
 
-/** Public JWK advertised in signing_keys on the merchant UCP profile. */
+/** Public JWK advertised in `signing_keys` on the merchant UCP profile. */
 export function getSigningPublicJwkForProfile(): JsonWebKey & { kid: string } {
   return publicJwkForProfile;
-}
-
-/**
- * Legacy detached JWS over JCS payload (pre-RFC-9421 webhook sender; removed in PR3).
- */
-export async function createDetachedSignature(
-  payload: JsonValue,
-): Promise<string> {
-  const canonicalBytes = canonicalizeToBytes(payload);
-
-  const encoder = new TextEncoder();
-  const b64url = { alphabet: "base64url" as const, omitPadding: true };
-  const header = { alg: "ES256", kid: KEY_ID };
-  const headerB64 = encoder.encode(JSON.stringify(header)).toBase64(b64url);
-  const payloadB64 = canonicalBytes.toBase64(b64url);
-  const signingInput = `${headerB64}.${payloadB64}`;
-
-  const signature = await crypto.subtle.sign(
-    { name: "ECDSA", hash: "SHA-256" },
-    privateKey,
-    encoder.encode(signingInput),
-  );
-
-  const signatureB64 = new Uint8Array(signature).toBase64(b64url);
-  return `${headerB64}..${signatureB64}`;
 }

@@ -41,17 +41,27 @@ deno task start
 
 The service starts on `http://localhost:8080`.
 
+If you change the orders dashboard React UI
+(`src/features/orders_dashboard/client/`), rebuild the static bundle:
+
+```bash
+deno task build:orders-dashboard
+```
+
 ### Verify it's running
 
 ```bash
-curl http://localhost:8080/
+curl http://localhost:8080/health
 ```
 
 ## API Endpoints
 
 | Endpoint                          | Method | Description                             |
 | --------------------------------- | ------ | --------------------------------------- |
-| `/`                               | GET    | Health check                            |
+| `/health`                         | GET    | Health check                            |
+| `/`                               | GET    | Placed orders dashboard (React)         |
+| `/api/demo/orders`                | GET    | JSON list of placed orders (dashboard)  |
+| `/static/*`                       | GET    | Dashboard JS/CSS assets                 |
 | `/.well-known/ucp`                | GET    | UCP profile discovery                   |
 | `/products`                       | GET    | List available products                 |
 | `/products/:sku`                  | GET    | Get product details                     |
@@ -60,7 +70,8 @@ curl http://localhost:8080/
 | `/checkout_sessions/:id`          | PUT    | Update session (fulfillment, addresses) |
 | `/checkout_sessions/:id/complete` | POST   | Complete checkout with payment          |
 | `/checkout_sessions/:id/cancel`   | POST   | Cancel a checkout session               |
-| `/api/vipps/callback`             | POST   | Vipps payment webhook                   |
+| `/api/payment/vipps/callback`     | POST   | Vipps payment callback                  |
+| `/api/shipping/callback`          | POST   | Demo shipping → order event webhook     |
 
 ## Usage Examples
 

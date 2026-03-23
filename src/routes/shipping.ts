@@ -1,13 +1,17 @@
-import { getSessionById } from "../infrastructure/sessions.ts";
+import {
+  getSessionById,
+  loadSessions,
+  saveSessions,
+} from "../infrastructure/sessions.ts";
 import {
   createShippedOrderEvent,
   sendOrderWebhook,
 } from "../infrastructure/webhook_sender.ts";
 
 /**
- * Simulates a shipping provider (PostNord/Bring/etc) notifying the merchant
- * that an order has been fulfilled, which then forwards the event to the
- * platform via the webhook URL discovered from the UCP-Agent profile.
+ * Simulates a shipping provider (PostNord/Bring/etc) notifying the merchant,
+ * then POSTs a UCP [Order Event](https://ucp.dev/latest/specification/order/#order-event-webhook)
+ * to the platform `webhook_url` from `dev.ucp.shopping.order` (UCP-Agent profile).
  */
 export async function handleShippingCallback(
   req: Request,
@@ -59,8 +63,8 @@ export async function handleShippingCallback(
   );
 
   const orderEvent = createShippedOrderEvent(
+    session,
     orderId,
-    checkoutId,
     trackingNumber,
     trackingUrl,
     carrier,
@@ -73,6 +77,32 @@ export async function handleShippingCallback(
   const responseText = await response.text();
 
   console.log(`Platform response: ${response.status}`);
+
+  if (response.ok) {
+    const notifiedAt = Temporal.Now.instant().toString();
+    const sessions = loadSessions();
+    const idx = sessions.findIndex((s) => s.id === checkoutId);
+    if (idx >= 0) {
+      const s = sessions[idx]!;
+      sessions[idx] = {
+        ...s,
+        updated_at: notifiedAt,
+        demo: {
+          ...s.demo,
+          last_order_event_webhook: {
+            notified_at: notifiedAt,
+            event_id: orderEvent.event_id,
+            http_status: response.status,
+            fulfillment_event_type: status,
+            tracking_number: trackingNumber,
+            tracking_url: trackingUrl,
+            carrier,
+          },
+        },
+      };
+      saveSessions(sessions);
+    }
+  }
 
   return Response.json({
     success: response.ok,

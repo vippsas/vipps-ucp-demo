@@ -74,6 +74,20 @@ export async function handleShippingCallback(
 
   console.log(`Platform response: ${response.status}`);
 
+  const now = Temporal.Now.instant().toString();
+  if (response.ok) {
+    session.merchant_fulfillment = {
+      notified_at: now,
+      shipping_status: status,
+      tracking_number: trackingNumber,
+      tracking_url: trackingUrl,
+      carrier,
+      event_id: orderEvent.event_id,
+      platform_webhook_status: response.status,
+    };
+    session.updated_at = now;
+  }
+
   return Response.json({
     success: response.ok,
     message: `Order ${orderId} fulfillment processed`,

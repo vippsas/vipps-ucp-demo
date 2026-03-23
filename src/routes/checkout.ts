@@ -762,7 +762,11 @@ export async function handleCompleteCheckout(
 // ============================================
 
 /**
- * Handles POST /api/payment/vipps/callback — delegates to Vipps payment handler.
+ * POST /api/payment/vipps/callback — optional **demo/test** hook only.
+ *
+ * Vipps does not POST here. Production uses the
+ * [Webhooks API](https://developer.vippsmobilepay.com/docs/APIs/webhooks-api/api-guide/)
+ * (register a URL + verify HMAC). This demo advances checkout via **polling** only.
  */
 export async function handleVippsCallback(req: Request): Promise<Response> {
   let payload: unknown;

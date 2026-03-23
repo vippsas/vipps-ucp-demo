@@ -330,11 +330,13 @@ export type GetPaymentResult =
   | { success: false; error: string };
 
 /**
- * Gets the current status of a Vipps payment.
- * Used for polling as backup to callbacks.
+ * Gets the current status of a Vipps payment (`GET /epayment/v1/payments/{reference}`).
  *
- * See: https://developer.vippsmobilepay.com/docs/knowledge-base/polling-guidelines/
- * Endpoint: GET /epayment/v1/payments/{reference}
+ * In this demo, polling is the **only** automated way we observe terminal
+ * payment states. Production should also use the Vipps Webhooks API; see
+ * https://developer.vippsmobilepay.com/docs/APIs/epayment-api/checklist/#implement-both-webhooks-and-polling
+ *
+ * @see https://developer.vippsmobilepay.com/docs/knowledge-base/polling-guidelines/
  */
 export async function getPaymentStatus(
   checkoutId: string,

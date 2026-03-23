@@ -1,5 +1,12 @@
 /**
- * Background polling for Vipps payment status (backup to callbacks).
+ * Background polling for Vipps ePayment status.
+ *
+ * **Demo scope:** This project relies on polling only to learn when a payment
+ * reaches a terminal state. In production, Vipps also expects the
+ * [Webhooks API](https://developer.vippsmobilepay.com/docs/APIs/webhooks-api/events/#epayment-api-event-types)
+ * for real-time updates, with polling as mandatory fallback — see the
+ * [ePayment checklist](https://developer.vippsmobilepay.com/docs/APIs/epayment-api/checklist/#implement-both-webhooks-and-polling).
+ *
  * @see https://developer.vippsmobilepay.com/docs/knowledge-base/polling-guidelines/
  */
 

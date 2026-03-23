@@ -1,9 +1,9 @@
 /**
  * Payment handler contract and DTOs.
  *
- * Defines the shape of a UCP payment handler (validate, create, callback)
- * and the result types used by the payment service. No runtime state —
- * the registry lives in infrastructure.
+ * Defines the shape of a UCP payment handler (validate, create, optional
+ * manual status hook) and the result types used by the payment service.
+ * No runtime state — the registry lives in infrastructure.
  */
 
 import type { CheckoutSession, UCPMessage } from "./checkout.ts";
@@ -16,7 +16,7 @@ export interface ProcessPaymentResult {
   httpStatus?: number;
 }
 
-/** Result of handling a provider webhook (e.g. Vipps callback). */
+/** Result of handling an optional inbound payment-status payload (demo/test). */
 export interface CallbackResult {
   status: string;
   httpStatus: number;
@@ -45,6 +45,6 @@ export interface PaymentHandlerImpl {
   /** Create payment and optionally start async polling. Returns result with updated session. */
   create(ctx: CreatePaymentContext): Promise<ProcessPaymentResult>;
 
-  /** Handle provider webhook (e.g. Vipps callback). Optional. */
+  /** Optional: apply a payment status from a JSON body (demo manual endpoint; not Vipps Webhooks API). */
   handleCallback?(payload: unknown): Promise<CallbackResult>;
 }

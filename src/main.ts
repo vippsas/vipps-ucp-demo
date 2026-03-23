@@ -77,6 +77,7 @@ app.post(
   (c) => handleCancelCheckout(c.req.raw, c.req.param("id")),
 );
 
+// Optional manual/test payment updates — not Vipps Webhooks API (demo uses polling).
 app.post("/api/payment/vipps/callback", (c) => handleVippsCallback(c.req.raw));
 app.post("/api/shipping/callback", (c) => handleShippingCallback(c.req.raw));
 

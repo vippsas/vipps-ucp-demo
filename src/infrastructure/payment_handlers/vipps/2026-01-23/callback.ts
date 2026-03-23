@@ -1,6 +1,12 @@
 /**
- * Vipps ePayment webhook callback handling.
- * @see https://developer.vippsmobilepay.com/api/epayment/#tag/Webhooks
+ * Applies a payment status update from a JSON payload (same transitions as polling).
+ *
+ * **Not the Vipps Webhooks API:** Production integrations must register URLs via
+ * `POST /webhooks/v1/webhooks` and verify HMAC per Vipps docs. This handler is
+ * only used by `POST /api/payment/vipps/callback` for manual testing or local
+ * simulation. The demo’s real path is **polling** in `polling.ts`.
+ *
+ * @see https://developer.vippsmobilepay.com/docs/APIs/webhooks-api/api-guide/
  */
 
 import type { CallbackResult } from "../../types.ts";

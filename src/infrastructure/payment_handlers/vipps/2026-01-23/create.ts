@@ -103,6 +103,7 @@ export async function createVippsPayment(
   if (idx >= 0) sessions[idx] = session;
   sessionAccess.saveSessions(sessions);
 
+  // Demo: terminal state is detected via polling only (see README — production should add Vipps Webhooks API).
   if (
     session.status === "complete_in_progress" &&
     session.payment?.vipps_reference

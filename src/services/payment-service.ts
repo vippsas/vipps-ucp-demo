@@ -63,7 +63,8 @@ export function createPayment(
 }
 
 /**
- * Handles a provider webhook (e.g. Vipps callback) by handler id.
+ * Dispatches an inbound payment-status payload to the handler (demo: optional
+ * `POST /api/payment/vipps/callback`). Not used for Vipps Webhooks API in this repo.
  */
 export function handlePaymentCallback(
   handlerId: string,

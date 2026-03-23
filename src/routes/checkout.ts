@@ -19,11 +19,14 @@ import {
   updateAncillaries,
 } from "../services/ancillaries-service.ts";
 import {
-  clearAccessToken,
   createPayment,
-  getPaymentStatus,
+  handlePaymentCallback,
+  validatePaymentInstrument,
+} from "../services/payment-service.ts";
+import {
   prefetchAccessToken,
-} from "../infrastructure/vipps_epayment_client.ts";
+  VIPPS_WALLET_HANDLER_ID,
+} from "../infrastructure/payment_handlers/vipps/2026-01-23/payment_handler.ts";
 import type {
   CheckoutSession,
   CreateCheckoutSessionRequest,
@@ -34,16 +37,12 @@ import type {
   UCPMessage,
   UpdateCheckoutSessionRequest,
 } from "../types/ucp/checkout.ts";
-import type {
-  CompleteCheckoutRequest,
-  WalletPaymentInstrument,
-} from "../types/ucp/payment.ts";
+import type { CompleteCheckoutRequest } from "../types/ucp/payment.ts";
 import {
   generateSessionId,
   loadSessions,
   saveSessions,
 } from "../infrastructure/sessions.ts";
-import type { VippsEPaymentAmount } from "../types/vipps/epayment.ts";
 import { mapPaymentHandlers } from "../infrastructure/ucp_profile.ts";
 const SESSION_EXPIRY_HOURS = 24;
 
@@ -58,17 +57,6 @@ const DEFAULT_LINKS: Link[] = [
     url: "https://example.com/privacy",
   },
 ];
-
-// Payment timeout for async PUSH_MESSAGE flow (5 minutes)
-const PAYMENT_TIMEOUT_MS = 5 * 60 * 1000;
-
-// Vipps polling configuration (per Vipps guidelines)
-// See: https://developer.vippsmobilepay.com/docs/knowledge-base/polling-guidelines/
-const VIPPS_POLL_INITIAL_DELAY_MS = 5000; // Start after 5 seconds
-const VIPPS_POLL_INTERVAL_MS = 2000; // Check every 2 seconds
-const VIPPS_POLL_MAX_ATTEMPTS = 150; // Max ~5 minutes of polling
-
-const TAX_RATE = 25; // Norwegian VAT 25%
 
 function jsonError(
   status: number,
@@ -238,9 +226,9 @@ export async function handleCreateCheckoutSession(
   };
 
   // Save session
-  const sessions = await loadSessions();
+  const sessions = loadSessions();
   sessions.push(session);
-  await saveSessions(sessions);
+  saveSessions(sessions);
 
   // Pre-fetch Vipps access token in background for CompleteCheckout
   prefetchAccessToken(session.id);
@@ -279,12 +267,12 @@ export async function handleCreateCheckoutSession(
   );
 }
 
-export async function handleGetCheckoutSession(
+export function handleGetCheckoutSession(
   req: Request,
   sessionId: string,
-): Promise<Response> {
+): Response {
   const ucpHeaders = parseUCPHeaders(req);
-  const sessions = await loadSessions();
+  const sessions = loadSessions();
   const session = sessions.find((s) => s.id === sessionId);
 
   if (!session) {
@@ -313,7 +301,7 @@ export async function handleGetCheckoutSession(
       severity: "recoverable",
       content: "This checkout session has expired.",
     }];
-    await saveSessions(sessions);
+    saveSessions(sessions);
   }
 
   // Check if payment expired (for complete_in_progress sessions) → terminal state
@@ -328,7 +316,7 @@ export async function handleGetCheckoutSession(
     session.status = "canceled";
     session.payment.state = "expired";
     session.messages = [];
-    await saveSessions(sessions);
+    saveSessions(sessions);
   }
 
   // Build response headers
@@ -381,7 +369,7 @@ export async function handleUpdateCheckoutSession(
 
   const body = rawBody as UpdateCheckoutSessionRequest;
 
-  const sessions = await loadSessions();
+  const sessions = loadSessions();
   const sessionIndex = sessions.findIndex((s) => s.id === sessionId);
 
   if (sessionIndex === -1) {
@@ -511,7 +499,7 @@ export async function handleUpdateCheckoutSession(
     session.status = "ready_for_complete";
   }
 
-  await saveSessions(sessions);
+  saveSessions(sessions);
 
   // Build response headers
   const responseHeaders = new Headers({ "Content-Type": "application/json" });
@@ -539,127 +527,13 @@ export async function handleUpdateCheckoutSession(
 }
 
 /**
- * Handler ID declared in /.well-known/ucp profile.
- * Matches the payment handler: com.vippsmobilepay.ucp.payment_handler
- * See: https://ucp.vippsmobilepay.com/ucp/2026-01-23/payment_handlers/vipps_mp_payment_handler.md
- */
-const VIPPS_WALLET_HANDLER_ID = "vippsmobilepay_wallet_handler";
-
-/**
- * Validates the wallet payment instrument from the request.
- */
-function validateWalletInstrument(
-  instrument: WalletPaymentInstrument,
-): UCPMessage | null {
-  // Validate handler_id matches our declared handler
-  if (!instrument.handler_id) {
-    return {
-      type: "error",
-      code: "missing_handler_id",
-      severity: "recoverable",
-      content: "Payment instrument must specify a handler_id.",
-      path: "$.payment.instruments[0].handler_id",
-    };
-  }
-
-  if (instrument.handler_id !== VIPPS_WALLET_HANDLER_ID) {
-    return {
-      type: "error",
-      code: "unknown_handler",
-      severity: "recoverable",
-      content:
-        `Unknown payment handler '${instrument.handler_id}'. This merchant supports: ${VIPPS_WALLET_HANDLER_ID}`,
-      path: "$.payment.instruments[0].handler_id",
-    };
-  }
-
-  // For now, this example only supports the wallet payment option. For card examples, please reach out to us.
-  if (instrument.type !== "WALLET") {
-    return {
-      type: "error",
-      code: "invalid_instrument_type",
-      severity: "recoverable",
-      content:
-        `Invalid instrument type '${instrument.type}'. Expected 'WALLET'.`,
-      path: "$.payment.instruments[0].type",
-    };
-  }
-
-  // Validate credential exists
-  if (!instrument.credential) {
-    return {
-      type: "error",
-      code: "missing_credential",
-      severity: "recoverable",
-      content: "Payment credential is required.",
-      path: "$.payment.instruments[0].credential",
-    };
-  }
-
-  // Validate credential type
-  const credentialType = instrument.credential.type;
-  if (credentialType !== "MSISDN" && credentialType !== "TOKEN") {
-    return {
-      type: "error",
-      code: "invalid_credential_type",
-      severity: "recoverable",
-      content:
-        `Invalid credential type '${credentialType}'. Expected 'MSISDN' or 'TOKEN'.`,
-      path: "$.payment.instruments[0].credential.type",
-    };
-  }
-
-  // Validate based on credential type
-  if (credentialType === "MSISDN") {
-    // Validate MSISDN value
-    const msisdn = instrument.credential.value;
-    if (!msisdn) {
-      return {
-        type: "error",
-        code: "missing_msisdn",
-        severity: "recoverable",
-        content: "Phone number (MSISDN) is required.",
-        path: "$.payment.instruments[0].credential.value",
-      };
-    }
-
-    // Validate MSISDN format (digits only, 7-15 chars, starts with non-zero)
-    const msisdnPattern = /^[1-9]\d{6,14}$/;
-    if (!msisdnPattern.test(msisdn)) {
-      return {
-        type: "error",
-        code: "invalid_msisdn_format",
-        severity: "recoverable",
-        content:
-          "Invalid phone number format. Expected MSISDN format: digits only with country code (e.g., 4712345678).",
-        path: "$.payment.instruments[0].credential.value",
-      };
-    }
-  } else if (credentialType === "TOKEN") {
-    // Validate token value
-    const token = instrument.credential.value;
-    if (!token || typeof token !== "string" || token.trim() === "") {
-      return {
-        type: "error",
-        code: "missing_token",
-        severity: "recoverable",
-        content: "Token value is required.",
-        path: "$.payment.instruments[0].credential.value",
-      };
-    }
-  }
-
-  return null; // Valid
-}
-
-/**
  * Handle POST /checkout_sessions/:id/cancel
  * Cancels a checkout session and any pending Vipps payment
  */
-export async function handleCancelCheckout(
+export function handleCancelCheckout(
   req: Request,
   sessionId: string,
-): Promise<Response> {
+): Response {
   const ucpHeaders = parseUCPHeaders(req);
 
   if (ucpHeaders.agent) {
@@ -668,7 +542,7 @@ export async function handleCancelCheckout(
     );
   }
 
-  const sessions = await loadSessions();
+  const sessions = loadSessions();
   const sessionIndex = sessions.findIndex((s) => s.id === sessionId);
 
   if (sessionIndex === -1) {
@@ -719,7 +593,7 @@ export async function handleCancelCheckout(
     content: "This checkout session has been canceled.",
   }];
 
-  await saveSessions(sessions);
+  saveSessions(sessions);
 
   // Build response headers
   const responseHeaders = new Headers({ "Content-Type": "application/json" });
@@ -788,7 +662,7 @@ export async function handleCompleteCheckout(
   // Get the first wallet instrument
   const instrument = body.payment.instruments[0];
 
-  const validationError = validateWalletInstrument(instrument);
+  const validationError = validatePaymentInstrument(instrument);
   if (validationError) {
     return new Response(
       JSON.stringify({
@@ -802,7 +676,7 @@ export async function handleCompleteCheckout(
     );
   }
 
-  const sessions = await loadSessions();
+  const sessions = loadSessions();
   const sessionIndex = sessions.findIndex((s) => s.id === sessionId);
 
   if (sessionIndex === -1) {
@@ -817,7 +691,6 @@ export async function handleCompleteCheckout(
 
   const session = sessions[sessionIndex];
 
-  // Check session status
   if (session.status === "completed") {
     return jsonError(
       400,
@@ -837,9 +710,8 @@ export async function handleCompleteCheckout(
   ) {
     if (session.status !== "canceled") {
       session.status = "canceled";
-      await saveSessions(sessions);
+      saveSessions(sessions);
     }
-
     return jsonError(
       400,
       "invalid_request",
@@ -848,116 +720,19 @@ export async function handleCompleteCheckout(
     );
   }
 
-  const customer = instrument.credential.type === "MSISDN"
-    ? { phoneNumber: instrument.credential.value }
-    : { customerToken: instrument.credential.value };
+  const sessionAccess = { loadSessions, saveSessions };
+  const result = await createPayment(session, instrument, sessionAccess);
 
-  // Determine currency (normalize to uppercase for Vipps API)
-  const currency = session.currency
-    .toUpperCase() as VippsEPaymentAmount["currency"];
-
-  // Call Vipps ePayment API to create the payment with receipt/order lines
-  // See: https://developer.vippsmobilepay.com/api/epayment/#tag/CreatePayments/operation/createPayment
-  const totalEntry = session.totals.find((t) => t.type === "total");
-  const paymentResult = await createPayment(
-    session.id,
-    customer,
-    totalEntry?.amount ?? 0,
-    currency,
-    `Order ${session.id}`,
-    session.line_items, // Include order lines in receipt
-    session.totals, // Include totals for bottom line
-    TAX_RATE, // Tax percentage for calculations
-  );
-
-  if (!paymentResult.success) {
-    // Check if any errors require buyer input (escalation)
-    const requiresEscalation = paymentResult.messages.some(
-      (msg) =>
-        msg.type === "error" &&
-        (msg.severity === "requires_buyer_input" ||
-          msg.severity === "requires_buyer_review"),
-    );
-
+  if (!result.success) {
     return new Response(
-      JSON.stringify({
-        ...session,
-        status: requiresEscalation ? "requires_escalation" : "incomplete",
-        messages: paymentResult.messages,
-      }),
+      JSON.stringify(result.session),
       {
-        status: paymentResult.httpStatus >= 500 ? 502 : 400,
+        status: result.httpStatus ?? 400,
         headers: { "Content-Type": "application/json" },
       },
     );
   }
 
-  // Payment created successfully with Vipps
-  // For PUSH_MESSAGE flow, payment state will be CREATED initially
-  // The actual authorization happens asynchronously when user approves in Vipps app
-  const now = Temporal.Now.instant();
-  const paymentExpiresAt = now.add(
-    Temporal.Duration.from({ milliseconds: PAYMENT_TIMEOUT_MS }),
-  );
-
-  if (paymentResult.data.state === "AUTHORIZED") {
-    session.status = "completed";
-    session.order = {
-      id: `order-${session.id}`,
-      reference: `ORD-${now.toZonedDateTimeISO("UTC").year}-${
-        session.id.slice(-6)
-      }`,
-      created_at: now.toString(),
-    };
-    session.messages = [{
-      type: "info",
-      code: "payment_approved",
-      content: "Payment approved. Your order has been placed.",
-    }];
-  } else {
-    // Normal case: PUSH_MESSAGE flow - payment is CREATED, awaiting user approval
-    // Return complete_in_progress immediately - don't block waiting for user
-    session.status = "complete_in_progress";
-    session.payment = {
-      ...session.payment,
-      state: "pending_approval",
-      vipps_reference: paymentResult.data.reference,
-      expires_at: paymentExpiresAt.toString(),
-    };
-    session.messages = [{
-      type: "info",
-      code: "payment_pending_user_approval",
-      content:
-        "A payment request has been sent to your Vipps app. Please open Vipps and approve the payment to complete your order.",
-    }];
-  }
-
-  session.updated_at = now.toString();
-
-  // Store Vipps reference in metadata for debugging/tracking
-  session.metadata = {
-    ...session.metadata,
-    vipps_reference: paymentResult.data.reference,
-    vipps_state: paymentResult.data.state,
-    vipps_psp_reference: paymentResult.data.pspReference ?? "",
-  };
-
-  await saveSessions(sessions);
-
-  // Start background polling as backup to callbacks (fire-and-forget)
-  // See: https://developer.vippsmobilepay.com/docs/knowledge-base/polling-guidelines/
-  if (
-    session.status === "complete_in_progress" &&
-    session.payment?.vipps_reference
-  ) {
-    startPaymentPolling(session.id, session.payment.vipps_reference).catch(
-      (err) => {
-        console.error(`Background polling failed for ${session.id}:`, err);
-      },
-    );
-  }
-
-  // Build response headers
   const responseHeaders = new Headers({ "Content-Type": "application/json" });
   responseHeaders.set(
     UCP_HEADERS.CAPABILITIES,
@@ -970,52 +745,29 @@ export async function handleCompleteCheckout(
       UCP_HEADERS.REQUEST_CONTEXT,
       serializeUCPRequestContext({
         requestId: ucpHeaders.requestContext.requestId,
-        sessionId: session.id,
+        sessionId: result.session.id,
         timestamp: Temporal.Now.instant(),
       }),
     );
   }
 
-  return new Response(JSON.stringify(session), {
+  return new Response(JSON.stringify(result.session), {
     status: 200,
     headers: responseHeaders,
   });
 }
 
 // ============================================
-// Vipps Callback Handler
+// Vipps Callback Handler (dispatches to payment service)
 // ============================================
 
 /**
- * Vipps ePayment callback payload
- * See: https://developer.vippsmobilepay.com/api/epayment/#tag/Webhooks
- */
-interface VippsPaymentCallback {
-  reference: string;
-  pspReference?: string;
-  name?: string;
-  amount?: { currency: string; value: number };
-  state?: string;
-  paymentMethod?: { type: string };
-  timestamp?: string;
-}
-
-/**
- * Handles Vipps ePayment callbacks for payment status updates.
- *
- * Called by Vipps when:
- * - User approves payment (state: AUTHORIZED)
- * - User rejects payment (state: ABORTED)
- * - Payment expires (state: EXPIRED)
- * - Payment is cancelled (state: TERMINATED)
- *
- * See: https://ucp.vippsmobilepay.com/ucp/2026-01-23/payment_handlers/vipps_mp_payment_handler.md#vipps-callback-handling
+ * Handles POST /api/payment/vipps/callback — delegates to Vipps payment handler.
  */
 export async function handleVippsCallback(req: Request): Promise<Response> {
-  let callback: VippsPaymentCallback;
-
+  let payload: unknown;
   try {
-    callback = await req.json();
+    payload = await req.json();
   } catch {
     console.error("Invalid JSON in callback");
     return new Response(JSON.stringify({ error: "Invalid JSON" }), {
@@ -1023,300 +775,9 @@ export async function handleVippsCallback(req: Request): Promise<Response> {
       headers: { "Content-Type": "application/json" },
     });
   }
-
-  console.log(
-    `Received callback for ${callback.reference}: ${callback.state}`,
-  );
-
-  // Find the checkout session by Vipps reference
-  const sessions = await loadSessions();
-  const session = sessions.find(
-    (s) =>
-      s.metadata?.vipps_reference === callback.reference ||
-      s.id === callback.reference,
-  );
-
-  if (!session) {
-    console.warn(`Session not found for reference: ${callback.reference}`);
-    // Return 200 to acknowledge receipt (Vipps expects this)
-    return new Response(JSON.stringify({ status: "session_not_found" }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  // Only process if session is still in complete_in_progress state
-  if (session.status !== "complete_in_progress") {
-    console.log(
-      `Session ${session.id} not in complete_in_progress, skipping`,
-    );
-    return new Response(JSON.stringify({ status: "already_processed" }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  const now = Temporal.Now.instant();
-
-  switch (callback.state) {
-    case "AUTHORIZED": {
-      console.log(`Payment AUTHORIZED for ${session.id}`);
-      session.status = "completed";
-      session.payment = {
-        ...session.payment,
-        state: "approved",
-        vipps_reference: callback.reference,
-        psp_reference: callback.pspReference,
-      };
-      session.order = {
-        id: `order-${session.id}`,
-        reference: `ORD-${now.toZonedDateTimeISO("UTC").year}-${
-          session.id.slice(-6)
-        }`,
-        created_at: now.toString(),
-      };
-      session.messages = [{
-        type: "info",
-        code: "payment_approved",
-        content: "Payment approved. Your order has been placed.",
-      }];
-      break;
-    }
-
-    case "ABORTED": {
-      // Terminal state: payment rejected
-      console.log(`Payment ABORTED for ${session.id}`);
-      session.status = "canceled";
-      session.payment = {
-        ...session.payment,
-        state: "rejected",
-      };
-      session.messages = [];
-      break;
-    }
-
-    case "EXPIRED": {
-      // Terminal state: payment expired
-      console.log(`Payment EXPIRED for ${session.id}`);
-      session.status = "canceled";
-      session.payment = {
-        ...session.payment,
-        state: "expired",
-      };
-      session.messages = [];
-      break;
-    }
-
-    case "TERMINATED": {
-      // Terminal state: payment cancelled
-      console.log(`Payment TERMINATED for ${session.id}`);
-      session.status = "canceled";
-      session.payment = {
-        ...session.payment,
-        state: "cancelled",
-      };
-      session.messages = [];
-      break;
-    }
-
-    default:
-      console.warn(`Unhandled state ${callback.state} for ${session.id}`);
-  }
-
-  session.updated_at = now.toString();
-  await saveSessions(sessions);
-
-  // Clear cached access token
-  clearAccessToken(session.id);
-
-  // Return 200 to acknowledge receipt
-  return new Response(JSON.stringify({ status: "ok" }), {
-    status: 200,
+  const result = await handlePaymentCallback(VIPPS_WALLET_HANDLER_ID, payload);
+  return new Response(JSON.stringify({ status: result.status }), {
+    status: result.httpStatus,
     headers: { "Content-Type": "application/json" },
   });
-}
-
-// ============================================
-// Background Payment Polling (Backup to Callbacks)
-// ============================================
-
-/**
- * Polls Vipps for payment status as backup to callbacks.
- *
- * Vipps does not guarantee callback delivery, so we must poll as backup.
- * See: https://developer.vippsmobilepay.com/docs/knowledge-base/polling-guidelines/
- *
- * This runs in the background (fire-and-forget) after payment creation.
- * The callback handler and this poller are idempotent - whichever gets
- * the status update first will process it.
- */
-async function startPaymentPolling(
-  sessionId: string,
-  vippsReference: string,
-): Promise<void> {
-  console.log(`Starting background polling for ${sessionId}`);
-
-  // Wait initial delay per Vipps guidelines
-  await new Promise((resolve) =>
-    setTimeout(resolve, VIPPS_POLL_INITIAL_DELAY_MS)
-  );
-
-  for (let attempt = 0; attempt < VIPPS_POLL_MAX_ATTEMPTS; attempt++) {
-    // Check if session is still in progress
-    const sessions = await loadSessions();
-    const session = sessions.find((s) => s.id === sessionId);
-
-    if (!session) {
-      console.log(`Session ${sessionId} not found, stopping`);
-      return;
-    }
-
-    // If already processed (by callback), stop polling
-    if (session.status !== "complete_in_progress") {
-      console.log(
-        `Session ${sessionId} already processed (${session.status}), stopping`,
-      );
-      return;
-    }
-
-    // Poll Vipps for payment status
-    const result = await getPaymentStatus(sessionId, vippsReference);
-
-    if (!result.success) {
-      console.warn(
-        `Failed to get status for ${sessionId}: ${result.error}`,
-      );
-      // Continue polling despite error
-      await new Promise((resolve) =>
-        setTimeout(resolve, VIPPS_POLL_INTERVAL_MS)
-      );
-      continue;
-    }
-
-    const { state, pspReference } = result.data;
-    console.log(`Payment ${vippsReference} state: ${state}`);
-
-    // Process terminal states
-    if (state === "AUTHORIZED") {
-      console.log(`Payment AUTHORIZED for ${sessionId}`);
-      await processPaymentAuthorized(sessionId, vippsReference, pspReference);
-      return;
-    }
-
-    if (state === "ABORTED") {
-      console.log(`Payment ABORTED for ${sessionId}`);
-      await processPaymentFailed(
-        sessionId,
-        "rejected",
-        "payment_rejected",
-        "Payment was declined. Please try again or choose a different payment method.",
-      );
-      return;
-    }
-
-    if (state === "EXPIRED") {
-      console.log(`Payment EXPIRED for ${sessionId}`);
-      await processPaymentFailed(
-        sessionId,
-        "expired",
-        "payment_expired",
-        "Payment request expired. Please try again.",
-      );
-      return;
-    }
-
-    if (state === "TERMINATED") {
-      console.log(`Payment TERMINATED for ${sessionId}`);
-      await processPaymentFailed(
-        sessionId,
-        "cancelled",
-        "payment_cancelled",
-        "Payment was cancelled. Please try again.",
-      );
-      return;
-    }
-
-    // Still CREATED - wait and poll again
-    await new Promise((resolve) => setTimeout(resolve, VIPPS_POLL_INTERVAL_MS));
-  }
-
-  // Max attempts reached - mark as timed out
-  console.log(`Max attempts reached for ${sessionId}`);
-  await processPaymentFailed(
-    sessionId,
-    "expired",
-    "payment_expired",
-    "Payment request timed out. Please try again.",
-  );
-}
-
-/**
- * Process a successful payment authorization.
- */
-async function processPaymentAuthorized(
-  sessionId: string,
-  vippsReference: string,
-  pspReference?: string,
-): Promise<void> {
-  const sessions = await loadSessions();
-  const session = sessions.find((s) => s.id === sessionId);
-
-  if (!session || session.status !== "complete_in_progress") {
-    return; // Already processed
-  }
-
-  const now = Temporal.Now.instant();
-
-  session.status = "completed";
-  session.payment = {
-    ...session.payment,
-    state: "approved",
-    vipps_reference: vippsReference,
-    psp_reference: pspReference,
-  };
-  session.order = {
-    id: `order-${session.id}`,
-    reference: `ORD-${now.toZonedDateTimeISO("UTC").year}-${
-      session.id.slice(-6)
-    }`,
-    created_at: now.toString(),
-  };
-  session.messages = [{
-    type: "info",
-    code: "payment_approved",
-    content: "Payment approved. Your order has been placed.",
-  }];
-  session.updated_at = now.toString();
-
-  await saveSessions(sessions);
-  clearAccessToken(sessionId);
-}
-
-/**
- * Process a failed payment (rejected, expired, cancelled).
- */
-async function processPaymentFailed(
-  sessionId: string,
-  paymentState: "rejected" | "expired" | "cancelled",
-  _errorCode: string,
-  _errorMessage: string,
-): Promise<void> {
-  const sessions = await loadSessions();
-  const session = sessions.find((s) => s.id === sessionId);
-
-  if (!session || session.status !== "complete_in_progress") {
-    return; // Already processed
-  }
-
-  // ABORTED, EXPIRED, TERMINATED are terminal states → checkout session canceled, no error message
-  session.status = "canceled";
-  session.payment = {
-    ...session.payment,
-    state: paymentState,
-  };
-  session.messages = [];
-  session.updated_at = Temporal.Now.instant().toString();
-
-  await saveSessions(sessions);
-  clearAccessToken(sessionId);
 }

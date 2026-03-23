@@ -113,6 +113,17 @@ export interface Order {
   created_at: string; // RFC 3339
 }
 
+/** Set after /api/shipping/callback succeeds and the platform webhook accepts the event. */
+export interface MerchantFulfillment {
+  notified_at: string;
+  shipping_status: string;
+  tracking_number: string;
+  tracking_url: string;
+  carrier: string;
+  event_id: string;
+  platform_webhook_status: number;
+}
+
 // UCP Messages - https://ucp.dev/specification/checkout/#error-handling
 
 export type UCPMessageSeverity =
@@ -184,6 +195,8 @@ export interface CheckoutSession {
   payment?: CheckoutPaymentInfo;
   messages?: UCPMessage[];
   order?: Order;
+  /** Fulfillment notification forwarded to the platform (dev.ucp.shopping.order webhook). */
+  merchant_fulfillment?: MerchantFulfillment;
   expires_at?: string; // RFC 3339
   continue_url?: string;
   created_at?: string; // RFC 3339

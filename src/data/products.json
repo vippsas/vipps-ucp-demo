@@ -109,6 +109,56 @@
       "stock": 50,
       "image_url": "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=400&h=400&fit=crop",
       "type": "product"
+    },
+    {
+      "sku": "DEMO-INS-3PCT",
+      "name": "Skadesforsikring",
+      "description": "Dekker bl.a. skade og tyveri i inntil 24 måneder. Engangspremien beregnes ut fra tilknyttet produkts verdi.",
+      "price": 0,
+      "currency": "NOK",
+      "stock": 9999,
+      "image_url": "https://images.unsplash.com/photo-1450101499163-c8848c66ca85?w=400&h=400&fit=crop",
+      "type": "insurance"
+    },
+    {
+      "sku": "DEMO-TV-LG77",
+      "name": "LG 77\" C5 AI 4K OLED Smart TV (2025)",
+      "description": "77\" 4K OLED med α9 AI-prosessor, 144 Hz, HDMI 2.1 og Dolby Atmos – typisk TV du finner under «Kanskje du trenger»-tilbehør hos forhandlere.",
+      "price": 3999000,
+      "currency": "NOK",
+      "stock": 5,
+      "image_url": "https://images.unsplash.com/photo-1593359670148-a61ba5362769?w=400&h=400&fit=crop",
+      "type": "product"
+    },
+    {
+      "sku": "DEMO-AUX-HDMI21",
+      "name": "HDMI 2.1 Ultra High Speed-kabel, 2 m",
+      "description": "Certifisert 48 Gbps – egnet for 4K/120 Hz og 8K. Vanlig tilbehør sammen med ny TV.",
+      "price": 44900,
+      "currency": "NOK",
+      "stock": 200,
+      "image_url": "https://images.clasohlson.com/medias/sys_master/h00/hb3/68622828175390.jpg",
+      "type": "product"
+    },
+    {
+      "sku": "DEMO-AUX-TVMOUNT",
+      "name": "Universelt TV-veggfeste (VESA)",
+      "description": "Justerbart veggfeste for flatskjerm – ofte anbefalt når du kjøper større TV.",
+      "price": 89900,
+      "currency": "NOK",
+      "stock": 80,
+      "image_url": "https://images.unsplash.com/photo-1593784991095-a205069470b6?w=400&h=400&fit=crop",
+      "type": "product"
+    },
+    {
+      "sku": "DEMO-AUX-SOUNDBAR",
+      "name": "Kompakt soundbar med HDMI eARC",
+      "description": "Bedre lyd enn innebygde TV-høyttalere; eARC for enkel kobling.",
+      "price": 249900,
+      "currency": "NOK",
+      "stock": 40,
+      "image_url": "https://images.unsplash.com/photo-1545454675-3531b543be5d?w=400&h=400&fit=crop",
+      "type": "product"
     }
   ]
 }

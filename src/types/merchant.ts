@@ -2,7 +2,7 @@
 
 import type { CheckoutSession } from "./ucp/checkout.ts";
 
-export type ProductType = "product" | "service";
+export type ProductType = "product" | "service" | "insurance";
 
 // Product catalog types
 export interface Product {

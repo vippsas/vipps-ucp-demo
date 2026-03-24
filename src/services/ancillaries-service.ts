@@ -6,6 +6,18 @@
  */
 
 import type { Product } from "../types/merchant.ts";
+
+/** Demo SKU for verdiforsikring; premie utledes per tilknyttet varelinje. */
+const INSURANCE_3PCT_SKU = "DEMO-INS-3PCT";
+
+/**
+ * TV cross-sells similar to Komplett «Kanskje du trenger» (HDMI, veggfeste, soundbar).
+ */
+const TV_SUGGESTION_SKUS = [
+  "DEMO-AUX-HDMI21",
+  "DEMO-AUX-TVMOUNT",
+  "DEMO-AUX-SOUNDBAR",
+] as const;
 import type {
   CheckoutSession,
   Item,
@@ -103,83 +115,169 @@ function generateLineItemId(): string {
   return `li_${crypto.randomUUID().slice(0, 8)}`;
 }
 
+function isAncillaryLineItem(
+  lineItemId: string,
+  applied: AppliedAncillary[],
+): boolean {
+  return applied.some((a) => a.id === lineItemId);
+}
+
+function lineItemMerchandiseValue(lineItem: LineItemResponse): number {
+  return lineItem.item.price * lineItem.quantity;
+}
+
+/** Premie i øre ut fra varelinjens verdi (avrundet til nærmeste hele øre). */
+function insurancePriceForLineItem(lineItem: LineItemResponse): number {
+  const value = lineItemMerchandiseValue(lineItem);
+  return Math.round((value * 3) / 100);
+}
+
+function lineItemIsTv(
+  lineItem: LineItemResponse,
+  product: Product | null,
+): boolean {
+  const text =
+    `${lineItem.item.title} ${lineItem.item.description ?? ""} ${
+      product?.name ?? ""
+    } ${product?.description ?? ""}`.toLowerCase();
+  return (
+    /\btv\b/.test(text) ||
+    /smart[- ]?tv/.test(text) ||
+    /fjernsyn/.test(text) ||
+    /\d{2,3}\s*[″"']?\s*tommer/.test(text) ||
+    (/\boled\b/.test(text) && /smart|4k|8k/.test(text))
+  );
+}
+
+function hasInsuranceForLineItem(
+  lineItemId: string,
+  lineItems: LineItemResponse[],
+  applied: AppliedAncillary[],
+): boolean {
+  for (const a of applied) {
+    if (a.for !== lineItemId) continue;
+    const ancillaryLi = lineItems.find((li) => li.id === a.id);
+    if (ancillaryLi?.item.id === INSURANCE_3PCT_SKU) return true;
+    if (a.category === "insurance") return true;
+  }
+  return false;
+}
+
+function isSkuAppliedForLine(
+  lineItemId: string,
+  sku: string,
+  lineItems: LineItemResponse[],
+  applied: AppliedAncillary[],
+): boolean {
+  return applied.some((a) => {
+    if (a.for !== lineItemId) return false;
+    const ancillaryLi = lineItems.find((li) => li.id === a.id);
+    return ancillaryLi?.item.id === sku;
+  });
+}
+
+function isRelationshipSkuApplied(
+  lineItemId: string,
+  relationshipSku: string,
+  lineItems: LineItemResponse[],
+  applied: AppliedAncillary[],
+): boolean {
+  return applied.some((a) => {
+    if (a.for !== lineItemId) return false;
+    const li = lineItems.find((l) => l.id === a.id);
+    return li?.item.id === relationshipSku;
+  });
+}
+
 // ============================================
 // Suggestion Building
 // ============================================
 
 /**
- * Build ancillary suggestions for a checkout session based on product relationships.
+ * Bygg tilleggsforslag: skadesforsikring (hvis ikke allerede lagt til), TV-tilbehør,
+ * og katalog-relasjoner.
  */
 export async function buildAncillarySuggestions(
   lineItems: LineItemResponse[],
   appliedAncillaries: AppliedAncillary[],
 ): Promise<AncillarySuggestion[]> {
   const suggestions: AncillarySuggestion[] = [];
-  const seenSkus = new Set<string>();
+  const seenRelationshipSkus = new Set<string>();
 
-  // Demo: Fetch upsell products for suggestions
-  const insuranceProduct = await getProductBySku("DEMO-007");
-  const headphoneCaseProduct = await getProductBySku("DEMO-009");
-
-  const hasInsurance = lineItems.some((a) =>
-    a.item.id === insuranceProduct?.sku
-  );
-  const hasHeadphoneCase = lineItems.some((a) =>
-    a.item.id === headphoneCaseProduct?.sku
-  );
+  const insuranceProduct = await getProductBySku(INSURANCE_3PCT_SKU);
 
   for (const lineItem of lineItems) {
-    const product = await getProductBySku(lineItem.item.id);
+    if (isAncillaryLineItem(lineItem.id, appliedAncillaries)) {
+      continue;
+    }
 
-    // Demo: Suggest headphone case when buying headphones (DEMO-001)
+    const product = await getProductBySku(lineItem.item.id);
+    const insPrice = insurancePriceForLineItem(lineItem);
+
     if (
-      lineItem.item.id === "DEMO-001" && headphoneCaseProduct &&
-      !hasHeadphoneCase
+      insuranceProduct &&
+      insPrice > 0 &&
+      !hasInsuranceForLineItem(lineItem.id, lineItems, appliedAncillaries)
     ) {
-      if (!seenSkus.has(headphoneCaseProduct.sku)) {
-        seenSkus.add(headphoneCaseProduct.sku);
+      suggestions.push({
+        item: {
+          id: INSURANCE_3PCT_SKU,
+          title: insuranceProduct.name,
+          price: insPrice,
+          description: insuranceProduct.description,
+          image_url: insuranceProduct.image_url,
+        },
+        type: "suggested",
+        category: "insurance",
+        for: lineItem.id,
+        description: insuranceProduct.description,
+      });
+    }
+
+    if (lineItemIsTv(lineItem, product)) {
+      for (const tvSku of TV_SUGGESTION_SKUS) {
+        if (
+          isSkuAppliedForLine(
+            lineItem.id,
+            tvSku,
+            lineItems,
+            appliedAncillaries,
+          )
+        ) {
+          continue;
+        }
+        const tvAux = await getProductBySku(tvSku);
+        if (!tvAux) continue;
+
         suggestions.push({
-          item: productToAncillaryItem(headphoneCaseProduct),
-          type: "complementary",
-          category: "product",
+          item: productToAncillaryItem(tvAux),
+          type: "suggested",
+          category: productTypeToCategory(tvAux.type),
           for: lineItem.id,
-          description: headphoneCaseProduct.description,
+          description: tvAux.description,
         });
       }
     }
 
-    if (product === null) {
-      // TEMP: Auto apply insurance for demo purposes
-      if (insuranceProduct && !hasInsurance) {
-        if (!seenSkus.has(insuranceProduct.sku)) {
-          seenSkus.add(insuranceProduct.sku);
-          suggestions.push({
-            item: productToAncillaryItem(insuranceProduct),
-            type: "suggested",
-            category: "service",
-            for: lineItem.id,
-            description: insuranceProduct.description,
-          });
-        }
-      }
-      continue;
-    }
-
-    if (!product.relationships) continue;
+    if (!product?.relationships) continue;
 
     for (const relationship of product.relationships) {
-      // Skip if already applied or already suggested
       if (
-        appliedAncillaries.some((a) =>
-          a.for == lineItem.id && a.id === relationship.sku
+        isRelationshipSkuApplied(
+          lineItem.id,
+          relationship.sku,
+          lineItems,
+          appliedAncillaries,
         )
-      ) continue;
-      if (seenSkus.has(relationship.sku)) continue;
+      ) {
+        continue;
+      }
+      if (seenRelationshipSkus.has(relationship.sku)) continue;
 
       const relatedProduct = await getProductBySku(relationship.sku);
       if (!relatedProduct) continue;
 
-      seenSkus.add(relationship.sku);
+      seenRelationshipSkus.add(relationship.sku);
 
       suggestions.push({
         item: productToAncillaryItem(relatedProduct),
@@ -323,12 +421,27 @@ export async function processAncillaryRequest(
 
     const newLineItemId = generateLineItemId();
 
+    const unitPrice =
+      sku === INSURANCE_3PCT_SKU && requestItem.for
+        ? (() => {
+            const parent = existingLineItems.find(
+              (li) => li.id === requestItem.for,
+            );
+            return parent ? insurancePriceForLineItem(parent) : product.price;
+          })()
+        : product.price;
+
+    const checkoutItem: Item = {
+      ...productToItem(product),
+      price: unitPrice,
+    };
+
     // Create line item
     newLineItems.push({
       id: newLineItemId,
-      item: productToItem(product),
+      item: checkoutItem,
       quantity: requestItem.quantity,
-      totals: calculateItemTotals(product.price, requestItem.quantity),
+      totals: calculateItemTotals(unitPrice, requestItem.quantity),
     });
 
     // Create applied ancillary record
@@ -349,11 +462,15 @@ export async function processAncillaryRequest(
       }
     }
 
+    const appliedCategory: AncillaryCategory = sku === INSURANCE_3PCT_SKU
+      ? "insurance"
+      : productTypeToCategory(product.type);
+
     newApplied.push({
       id: newLineItemId,
       for: requestItem.for,
       type: suggestionType,
-      category: productTypeToCategory(product.type),
+      category: appliedCategory,
       description: product.name,
       input: requestItem.input,
     });
@@ -382,7 +499,7 @@ export async function buildAncillariesResponse(
   const result: AncillariesResponse = {};
 
   if (suggested.length > 0) {
-    result.title = "Recommended additions";
+    result.title = "Anbefalte tillegg";
     result.suggested = suggested;
   }
 

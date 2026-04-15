@@ -17,7 +17,7 @@ import { serializeUCPAgent, UCP_HEADERS } from "./ucp_headers.ts";
 
 /** Public origin of this merchant; platform uses UCP-Agent profile URL to fetch signing keys. */
 function businessOrigin(): string {
-  return Deno.env.get("UCP_BUSINESS_ORIGIN") ?? "http://localhost:8080";
+  return Deno.env.get("UCP_BUSINESS_ORIGIN") ?? "http://localhost:8081";
 }
 
 function businessProfileUrl(): string {

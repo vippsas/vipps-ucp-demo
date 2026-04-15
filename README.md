@@ -39,12 +39,12 @@ deno task dev
 deno task start
 ```
 
-The service starts on `http://localhost:8080`.
+The service starts on `http://localhost:8081`.
 
 ### Verify it's running
 
 ```bash
-curl http://localhost:8080/
+curl http://localhost:8081/
 ```
 
 ## API Endpoints
@@ -67,7 +67,7 @@ curl http://localhost:8080/
 ### Create a Checkout Session
 
 ```bash
-curl -X POST http://localhost:8080/checkout_sessions \
+curl -X POST http://localhost:8081/checkout_sessions \
   -H "Content-Type: application/json" \
   -d '{
     "line_items": [
@@ -80,7 +80,7 @@ curl -X POST http://localhost:8080/checkout_sessions \
 ### Complete Checkout with Vipps Payment
 
 ```bash
-curl -X POST http://localhost:8080/checkout_sessions/{session_id}/complete \
+curl -X POST http://localhost:8081/checkout_sessions/{session_id}/complete \
   -H "Content-Type: application/json" \
   -d '{
     "payment": {
@@ -103,7 +103,7 @@ example, DEMO-006 (Washing Machine) has a required Drip Tray and suggested
 Insurance:
 
 ```bash
-curl -X POST http://localhost:8080/checkout_sessions \
+curl -X POST http://localhost:8081/checkout_sessions \
   -H "Content-Type: application/json" \
   -d '{
     "line_items": [
@@ -120,7 +120,7 @@ The response includes:
 ### Add a Suggested Ancillary
 
 ```bash
-curl -X PUT http://localhost:8080/checkout_sessions/{session_id} \
+curl -X PUT http://localhost:8081/checkout_sessions/{session_id} \
   -H "Content-Type: application/json" \
   -d '{
     "ancillaries": {

@@ -73,6 +73,6 @@ app.post(
 app.post("/api/payment/vipps/callback", (c) => handleVippsCallback(c.req.raw));
 app.post("/api/shipping/callback", (c) => handleShippingCallback(c.req.raw));
 
-const PORT = 8080;
+const PORT = 8081;
 console.log(`UCP Business Service starting on http://localhost:${PORT}`);
 Deno.serve({ port: PORT }, app.fetch);

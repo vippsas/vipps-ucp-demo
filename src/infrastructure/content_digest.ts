@@ -8,7 +8,7 @@ import {
   binary,
   item,
   serializeDictionary,
-} from "@std/http/unstable-structured-fields";
+} from "@vippsas/http/structured-fields";
 
 /** Build `Content-Digest` for the exact bytes sent as the request body. */
 export async function createContentDigestHeader(body: string): Promise<string> {

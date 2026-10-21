@@ -8,6 +8,15 @@ import {
   sendOrderWebhook,
 } from "../infrastructure/webhook_sender.ts";
 
+type ShippingCallbackBody = {
+  order_id?: string;
+  checkout_id?: string;
+  tracking_number?: string;
+  tracking_url?: string;
+  carrier?: string;
+  status?: "delivered" | "in_transit" | "shipped";
+};
+
 /**
  * Simulates a shipping provider (PostNord/Bring/etc) notifying the merchant,
  * then POSTs a UCP [Order Event](https://ucp.dev/latest/specification/order/#order-event-webhook)
@@ -16,7 +25,7 @@ import {
 export async function handleShippingCallback(
   req: Request,
 ): Promise<Response> {
-  const body = await req.json();
+  const body = (await req.json()) as ShippingCallbackBody;
 
   const orderId = body.order_id;
   const checkoutId = body.checkout_id;

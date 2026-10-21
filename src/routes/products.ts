@@ -4,7 +4,7 @@ const DATA_FILE = new URL("../data/products.json", import.meta.url);
 
 async function loadProducts(): Promise<ProductsStore> {
   try {
-    const data = await Deno.readTextFile(DATA_FILE);
+    const data = await Bun.file(DATA_FILE).text();
     const store: ProductsStore = JSON.parse(data);
     console.log(
       `Loaded ${store.products.length} products from ${DATA_FILE.pathname}`,
@@ -20,7 +20,7 @@ async function loadProducts(): Promise<ProductsStore> {
 }
 
 async function saveProducts(store: ProductsStore): Promise<void> {
-  await Deno.writeTextFile(DATA_FILE, JSON.stringify(store, null, 2));
+  await Bun.write(DATA_FILE, JSON.stringify(store, null, 2));
 }
 
 export async function handleGetProducts(_req: Request): Promise<Response> {

@@ -29,7 +29,7 @@ const SESSION_EXPIRY_HOURS = 24;
  */
 export async function loadSessions(): Promise<CheckoutSession[]> {
   try {
-    const data = await Deno.readTextFile(DATA_FILE);
+    const data = await Bun.file(DATA_FILE).text();
     const store: SessionsStore = JSON.parse(data);
     return store.sessions;
   } catch {
@@ -42,7 +42,7 @@ export async function loadSessions(): Promise<CheckoutSession[]> {
  */
 export async function saveSessions(sessions: CheckoutSession[]): Promise<void> {
   const store: SessionsStore = { sessions };
-  await Deno.writeTextFile(DATA_FILE, JSON.stringify(store, null, 2));
+  await Bun.write(DATA_FILE, JSON.stringify(store, null, 2));
 }
 
 /**

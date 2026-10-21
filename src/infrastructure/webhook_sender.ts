@@ -6,18 +6,18 @@
  * @module
  */
 
-import { canonicalize } from "@std/json/unstable-canonicalize";
-import type { JsonValue } from "@std/json/types";
+import { canonicalize } from "@vippsas/json/canonicalize";
+import type { JsonValue } from "@vippsas/json/types";
 import type { CheckoutSession, TotalEntry } from "../types/ucp/checkout.ts";
 import { createContentDigestHeader } from "./content_digest.ts";
-import { signMessage } from "../libs/std_candidates/message_signatures.ts";
+import { signMessage } from "@vippsas/http/message-signatures";
 import { getSigningKeyId, getSigningPrivateKey } from "./signing_keys.ts";
 import { getCapability, getUCPVersion } from "./ucp_profile.ts";
 import { serializeUCPAgent, UCP_HEADERS } from "./ucp_headers.ts";
 
 /** Public origin of this merchant; platform uses UCP-Agent profile URL to fetch signing keys. */
 function businessOrigin(): string {
-  return Deno.env.get("UCP_BUSINESS_ORIGIN") ?? "http://localhost:8081";
+  return process.env.UCP_BUSINESS_ORIGIN ?? "http://localhost:8081";
 }
 
 function businessProfileUrl(): string {

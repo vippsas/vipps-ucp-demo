@@ -7,6 +7,10 @@
  * @module
  */
 
+import type { webcrypto } from "node:crypto";
+
+type JsonWebKey = webcrypto.JsonWebKey;
+
 let privateKey!: CryptoKey;
 let publicJwkForProfile!: JsonWebKey & { kid: string };
 

@@ -1,4 +1,4 @@
-import { formatCacheControl } from "@std/http/unstable-cache-control";
+import { formatCacheControl } from "@vippsas/http/cache-control";
 import { ucpProfile } from "../data/ucp-profile.ts";
 import { getSigningPublicJwkForProfile } from "../infrastructure/signing_keys.ts";
 

@@ -22,7 +22,7 @@ import {
   serializeList,
   string,
   token,
-} from "@std/http/unstable-structured-fields";
+} from "@vippsas/http/structured-fields";
 // =============================================================================
 // UCP-Agent Header
 // =============================================================================
@@ -252,7 +252,7 @@ export function serializeUCPAllowance(allowance: UCPAllowance): string {
         ["currency", string(allowance.currency)],
       ]),
     ],
-    ["expires", item(date(new Date(allowance.expiresAt.epochMilliseconds)))],
+    ["expires", item(date(allowance.expiresAt))],
   ];
 
   if (allowance.merchantId !== undefined) {
@@ -299,11 +299,7 @@ export function parseUCPAllowance(header: string): UCPAllowance | null {
     const result: UCPAllowance = {
       maxAmount: maxAmountItem.value.value,
       currency: currencyParam.value,
-      expiresAt: typeof expiresVal === "number"
-        ? Temporal.Instant.fromEpochMilliseconds(expiresVal * 1000)
-        : Temporal.Instant.fromEpochMilliseconds(
-          (expiresVal as Date).getTime(),
-        ),
+      expiresAt: expiresVal,
     };
 
     const merchantItem = dict.get("merchant");
@@ -363,7 +359,7 @@ export function serializeUCPIdempotency(idempotency: UCPIdempotency): string {
   if (idempotency.createdAt !== undefined) {
     parameters.push([
       "created",
-      date(new Date(idempotency.createdAt.epochMilliseconds)),
+      date(idempotency.createdAt),
     ]);
   }
   if (idempotency.ttl !== undefined) {
@@ -393,9 +389,7 @@ export function parseUCPIdempotency(header: string): UCPIdempotency | null {
     const createdParam = parsed.parameters.get("created");
     if (createdParam && createdParam.type === "date") {
       const v = createdParam.value;
-      result.createdAt = typeof v === "number"
-        ? Temporal.Instant.fromEpochMilliseconds(v * 1000)
-        : Temporal.Instant.fromEpochMilliseconds((v as Date).getTime());
+      result.createdAt = v;
     }
 
     const ttlParam = parsed.parameters.get("ttl");
@@ -444,7 +438,7 @@ export function serializeUCPRequestContext(context: UCPRequestContext): string {
   if (context.timestamp !== undefined) {
     entries.push([
       "timestamp",
-      item(date(new Date(context.timestamp.epochMilliseconds))),
+      item(date(context.timestamp)),
     ]);
   }
 
@@ -494,9 +488,7 @@ export function parseUCPRequestContext(
       timestampItem.value.type === "date"
     ) {
       const v = timestampItem.value.value;
-      result.timestamp = typeof v === "number"
-        ? Temporal.Instant.fromEpochMilliseconds(v * 1000)
-        : Temporal.Instant.fromEpochMilliseconds((v as Date).getTime());
+      result.timestamp = v;
     }
 
     return result;

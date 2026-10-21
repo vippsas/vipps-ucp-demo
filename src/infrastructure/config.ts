@@ -1,5 +1,3 @@
-import { load } from "@std/dotenv";
-
 export interface VippsConfig {
   apiBaseUrl: string;
   clientId: string;
@@ -10,19 +8,13 @@ export interface VippsConfig {
 
 let config: VippsConfig | null = null;
 
-export async function loadConfig(): Promise<void> {
-  try {
-    await load({ export: true });
-  } catch {
-    // .env file is optional
-  }
-
+export function loadConfig(): void {
   config = {
-    apiBaseUrl: Deno.env.get("VIPPS_API_BASE_URL") ?? "",
-    clientId: Deno.env.get("VIPPS_CLIENT_ID") ?? "",
-    clientSecret: Deno.env.get("VIPPS_CLIENT_SECRET") ?? "",
-    subscriptionKey: Deno.env.get("VIPPS_SUBSCRIPTION_KEY") ?? "",
-    msn: Deno.env.get("VIPPS_MERCHANT_SERIAL_NUMBER") ?? "",
+    apiBaseUrl: process.env.VIPPS_API_BASE_URL ?? "",
+    clientId: process.env.VIPPS_CLIENT_ID ?? "",
+    clientSecret: process.env.VIPPS_CLIENT_SECRET ?? "",
+    subscriptionKey: process.env.VIPPS_SUBSCRIPTION_KEY ?? "",
+    msn: process.env.VIPPS_MERCHANT_SERIAL_NUMBER ?? "",
   };
 
   const required: (keyof VippsConfig)[] = [
@@ -35,7 +27,7 @@ export async function loadConfig(): Promise<void> {
   const missing = required.filter((key) => !config![key]?.trim());
   if (missing.length > 0) {
     console.error("Missing or empty required env: " + missing.join(", "));
-    Deno.exit(1);
+    process.exit(1);
   }
 }
 

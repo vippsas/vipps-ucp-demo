@@ -62,7 +62,7 @@ async function loadProfile(): Promise<UCPProfile> {
     return cachedProfile;
   }
 
-  const data = await Deno.readTextFile(PROFILE_FILE);
+  const data = await Bun.file(PROFILE_FILE).text();
   cachedProfile = JSON.parse(data) as UCPProfile;
   return cachedProfile;
 }

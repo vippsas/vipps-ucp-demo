@@ -25,7 +25,7 @@ await initUCPProfile();
 registerVippsPaymentHandler({ loadSessions, saveSessions });
 
 // Initialize signing keys for webhook signatures
-await loadConfig();
+loadConfig();
 await initSigningKeys();
 
 const ucpHeaderNames = Object.values(UCP_HEADERS);
@@ -74,5 +74,9 @@ app.post("/api/payment/vipps/callback", (c) => handleVippsCallback(c.req.raw));
 app.post("/api/shipping/callback", (c) => handleShippingCallback(c.req.raw));
 
 const PORT = 8081;
+// Seconds, Bun's maximum: a request waiting on the Vipps API can stay silent
+// longer than the 10 s default allows.
+const IDLE_TIMEOUT_SECONDS = 255;
+
 console.log(`UCP Business Service starting on http://localhost:${PORT}`);
-Deno.serve({ port: PORT }, app.fetch);
+Bun.serve({ port: PORT, idleTimeout: IDLE_TIMEOUT_SECONDS, fetch: app.fetch });

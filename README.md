@@ -26,17 +26,22 @@ This service demonstrates:
 
 ### Prerequisites
 
-- [Deno](https://deno.land/)
+- [Bun](https://bun.sh/)
+- A GitHub token with `read:packages` in `~/.npmrc`, for the `@vippsas/*`
+  packages on GitHub Packages:
+  `//npm.pkg.github.com/:_authToken=<token>`
 - Vipps MobilePay test credentials (optional, for payment testing)
 
 ### Running the Service
 
 ```bash
+bun install
+
 # Development mode with auto-reload
-deno task dev
+bun run dev
 
 # Production mode
-deno task start
+bun run start
 ```
 
 The service starts on `http://localhost:8081`.
@@ -262,28 +267,10 @@ requests.
 
 ## Development
 
-### Running Tests
-
-```bash
-deno test
-```
-
 ### Type Checking
 
 ```bash
-deno check src/main.ts
-```
-
-### Formatting
-
-```bash
-deno fmt
-```
-
-### Linting
-
-```bash
-deno lint
+bun run check
 ```
 
 ## Payment Flow
@@ -322,4 +309,4 @@ See [LICENSE](LICENSE) file for details.
 - [UCP Specification](https://ucp.dev)
 - [Vipps Developer Portal](https://developer.vippsmobilepay.com/)
 - [Vipps ePayment API](https://developer.vippsmobilepay.com/api/epayment/)
-- [Deno Documentation](https://deno.land/manual)
+- [Bun Documentation](https://bun.sh/docs)

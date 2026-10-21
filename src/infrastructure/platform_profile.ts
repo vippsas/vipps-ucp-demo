@@ -10,7 +10,7 @@
  * @module
  */
 
-import { parseCacheControl } from "@std/http/unstable-cache-control";
+import { parseCacheControl } from "@vippsas/http/cache-control";
 
 /**
  * Platform's UCP profile structure (subset of what we need)

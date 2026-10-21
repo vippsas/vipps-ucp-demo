@@ -87,7 +87,9 @@ async function fetchAccessToken(): Promise<
     });
 
     if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({}));
+      const errorBody = (await response.json().catch(() => ({}))) as Partial<
+        VippsAccessTokenError
+      >;
       console.error(`Token fetch failed: ${response.status}`, errorBody);
       return {
         success: false,
@@ -366,7 +368,7 @@ export async function getPaymentStatus(
       return { success: false, error: `HTTP ${response.status}` };
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as VippsPaymentStatus;
     return {
       success: true,
       data: {

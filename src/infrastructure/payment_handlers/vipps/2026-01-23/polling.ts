@@ -3,8 +3,8 @@
  * @see https://developer.vippsmobilepay.com/docs/knowledge-base/polling-guidelines/
  */
 
-import { delay } from "@std/async/delay";
-import { poll } from "@std/async/unstable-poll";
+import { delay } from "@vippsas/async/delay";
+import { poll } from "@vippsas/async/poll";
 import type { SessionAccess } from "../../types.ts";
 import { clearAccessToken } from "./epayment_client.ts";
 import { getPaymentStatus } from "./epayment_client.ts";
